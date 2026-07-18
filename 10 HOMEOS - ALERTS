@@ -1,0 +1,168 @@
+/*************************************************
+ * 10 HOMEOS - ALERTS
+ * Version: 2.0.0
+ *
+ * Only displays when something is different than normal.
+ *************************************************/
+
+function drawAlertsCard_(sh, row, showState) {
+  const alerts = buildHomeAlertsFromDecisionOS_(showState);
+
+  // No alerts = no section.
+  if (!alerts.length) return row;
+
+  row = drawCardTitle_(sh, row, "TODAY'S NOTES");
+
+  alerts.forEach(alert => {
+    const range = sh.getRange(row, 1, 1, 9).merge();
+
+    if (alert.richText) {
+      range.setRichTextValue(alert.richText);
+    } else {
+      range.setValue(alert.text || "");
+    }
+
+    range
+      .setWrap(true)
+      .setVerticalAlignment("top")
+      .setFontSize(13);
+
+    sh.setRowHeight(
+      row,
+      Math.max(42, 22 * String(alert.text || "").split("\n").length)
+    );
+
+    row++;
+  });
+
+  return row + 1;
+}
+
+function buildHomeAlertsFromDecisionOS_(showState) {
+  showState = showState || {};
+  const alerts = [];
+
+  const castOuts = showState.currentCastOuts || [];
+
+  if (castOuts.length) {
+    alerts.push({
+      type: "cast",
+      text: castOuts.map(item => {
+        return "- " +
+          (item.out || "") +
+          " OUT" +
+          (item.role ? ", " + item.role : "") +
+          (item.in ? " = " + item.in : "");
+      }).join("\n")
+    });
+  }
+
+  const guest = getHomeGuestSpellerFromShowState_(showState);
+  if (guest) {
+    alerts.push({
+      type: "guest",
+      text: "- Guest Speller: " + guest
+    });
+  }
+
+  const notes = showState.notes || "";
+  if (notes) {
+    alerts.push({
+      type: "notes",
+      text: Array.isArray(notes) ? notes.join("\n") : notes
+    });
+  }
+
+  return alerts;
+}
+
+/*************************************************
+ * INSERT ALERTS
+ *************************************************/
+
+function buildHomeInsertAlert_(principalOuts) {
+  if (principalOuts.length >= 3) {
+    return buildHomeTodayAtInsertAlert_(principalOuts);
+  }
+
+  return {
+    type: "insert",
+    text: principalOuts.map(row => {
+      const out = homeAlertOutActor_(row);
+      const inn = homeAlertInActor_(row);
+      const role = row["Role"] || "";
+
+      return "- " +
+        out +
+        " OUT, " +
+        role +
+        " = " +
+        inn +
+        " (" +
+        inn +
+        " = " +
+        role +
+        " Insert Required - Send to FOH)";
+    }).join("\n")
+  };
+}
+
+function buildHomeTodayAtInsertAlert_(principalOuts) {
+  const lines = principalOuts.map(row => {
+    const out = homeAlertOutActor_(row);
+    const inn = homeAlertInActor_(row);
+    const role = row["Role"] || "";
+
+    return "- " + out + " OUT, " + role + " = " + inn;
+  });
+
+  lines.push("");
+  lines.push("Today At Insert required.");
+
+  const text = lines.join("\n");
+  const url = getHomeTodayAtInsertUrl_();
+
+  if (!url) {
+    return {
+      type: "today_at_insert",
+      text
+    };
+  }
+
+  const richText = SpreadsheetApp.newRichTextValue()
+    .setText(text)
+    .setLinkUrl(
+      text.indexOf("Today At Insert required."),
+      text.indexOf("Today At Insert required.") + "Today At Insert required.".length,
+      url
+    )
+    .build();
+
+  return {
+    type: "today_at_insert",
+    text,
+    richText
+  };
+}
+
+function homeAlertOutActor_(row) {
+  return row["Default Actor"] ||
+    row["Out Actor"] ||
+    row["Out"] ||
+    "";
+}
+
+function homeAlertInActor_(row) {
+  return row["Resolved Actor"] ||
+    row["Cover Actor"] ||
+    row["In Actor"] ||
+    "";
+}
+
+function getHomeTodayAtInsertUrl_() {
+  if (typeof getPrepSettingValue_ !== "function") return "";
+
+  return getPrepSettingValue_("Today At Insert URL") ||
+    getPrepSettingValue_("Today At Insert Link") ||
+    getPrepSettingValue_("Today At Insert");
+}

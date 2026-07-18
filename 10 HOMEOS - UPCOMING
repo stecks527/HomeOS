@@ -1,0 +1,703 @@
+/*************************************************
+ * 10 HOMEOS - UPCOMING
+ * Version: 1.0.0
+ * Status: ACTIVE
+ *
+ * Responsibilities:
+ * - Draw the Home Upcoming card.
+ * - Preview the next five days.
+ * - Read structured Weekly information.
+ * - Add a compact PT summary when applicable.
+ *
+ * PT slot editing and the full PT card live in:
+ * 10h HOMEOS - PT TODAY.gs
+ *
+ * Never:
+ * - Draw Current Focus.
+ * - Draw Timeline.
+ * - Edit source sheets.
+ *************************************************/
+
+
+/* =========================================================
+ * UPCOMING CARD
+ * ========================================================= */
+
+function drawUpcomingCard_(
+  sh,
+  row
+) {
+  row =
+    drawCardTitle_(
+      sh,
+      row,
+      "UPCOMING"
+    );
+
+  const upcoming =
+    getDashboardUpcomingFromWeekly_();
+
+  if (!upcoming.length) {
+    return drawEmptyLine_(
+      sh,
+      row,
+      "No upcoming items found."
+    );
+  }
+
+  upcoming
+    .slice(0, 5)
+    .forEach(function (day) {
+      row =
+        drawUpcomingDay_(
+          sh,
+          row,
+          day
+        );
+    });
+
+  return row + 1;
+}
+
+
+/* =========================================================
+ * UPCOMING DAY
+ * ========================================================= */
+
+function drawUpcomingDay_(
+  sh,
+  row,
+  day
+) {
+  day =
+    day || {};
+
+  /*
+   * Day heading
+   */
+  sh.getRange(
+    row,
+    1,
+    1,
+    9
+  )
+    .merge()
+    .setValue(
+      day.day || ""
+    )
+    .setFontWeight("bold")
+    .setFontSize(13)
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setBackground("#F6F8FC");
+
+  sh.setRowHeight(
+    row,
+    28
+  );
+
+  row++;
+
+  const items =
+    Array.isArray(day.items)
+      ? day.items
+      : [];
+
+  items.forEach(function (item) {
+    item =
+      item || {};
+
+    const detailText =
+      String(
+        item.detail ||
+        item.summary ||
+        ""
+      ).trim();
+
+    /*
+     * Item label
+     */
+    sh.getRange(
+      row,
+      1,
+      1,
+      2
+    )
+      .merge()
+      .setValue(
+        item.label || ""
+      )
+      .setFontWeight("bold")
+      .setHorizontalAlignment("center")
+      .setVerticalAlignment("middle");
+
+    /*
+     * Item detail
+     */
+    sh.getRange(
+      row,
+      3,
+      1,
+      7
+    )
+      .merge()
+      .setValue(
+        detailText
+      )
+      .setFontSize(13)
+      .setVerticalAlignment("middle")
+      .setWrap(true);
+
+    sh.setRowHeight(
+      row,
+      detailText.includes("\n")
+        ? 54
+        : 38
+    );
+
+    row++;
+  });
+
+  return row + 1;
+}
+
+
+/* =========================================================
+ * UPCOMING DATA
+ * ========================================================= */
+
+function getDashboardUpcomingFromWeekly_() {
+  const ss =
+    SpreadsheetApp
+      .getActiveSpreadsheet();
+
+  const inOut =
+    ss.getSheetByName(
+      "IN/OUT"
+    );
+
+  if (!inOut) {
+    return [];
+  }
+
+  const startDate =
+    parseInOutDate_(
+      inOut
+        .getRange("A3")
+        .getDisplayValue()
+    );
+
+  if (
+    !(startDate instanceof Date) ||
+    isNaN(startDate.getTime())
+  ) {
+    return [];
+  }
+
+  /*
+   * Build all five target dates first.
+   */
+  const targetDates = [];
+
+  for (
+    let offset = 1;
+    offset <= 5;
+    offset++
+  ) {
+    const date =
+      new Date(
+        startDate.getFullYear(),
+        startDate.getMonth(),
+        startDate.getDate()
+      );
+
+    date.setDate(
+      date.getDate() +
+      offset
+    );
+
+    targetDates.push(
+      date
+    );
+  }
+
+  /*
+   * Read the external PT workbook only once.
+   */
+  const ptMap =
+    typeof getHomePTUpcomingMap_ ===
+      "function"
+      ? getHomePTUpcomingMap_(
+          targetDates
+        )
+      : {};
+
+  const timezone =
+    Session.getScriptTimeZone();
+
+  const output = [];
+
+  targetDates.forEach(
+    function (date) {
+      const dateKey =
+        Utilities.formatDate(
+          date,
+          timezone,
+          "yyyy-MM-dd"
+        );
+
+      const upcomingDay =
+        getDashboardUpcomingForDate_(
+          date,
+          ptMap[dateKey] || null
+        );
+
+      if (
+        upcomingDay &&
+        Array.isArray(
+          upcomingDay.items
+        ) &&
+        upcomingDay.items.length
+      ) {
+        output.push(
+          upcomingDay
+        );
+      }
+    }
+  );
+
+  return output;
+}
+
+
+/* =========================================================
+ * UPCOMING DATE MODEL
+ * ========================================================= */
+
+function getDashboardUpcomingForDate_(
+  date,
+  ptDay
+) {
+  if (
+    !(date instanceof Date) ||
+    isNaN(date.getTime())
+  ) {
+    return null;
+  }
+
+  const timezone =
+    Session.getScriptTimeZone();
+
+  const day =
+    Utilities
+      .formatDate(
+        date,
+        timezone,
+        "EEEE"
+      )
+      .toUpperCase();
+
+  const month =
+    Utilities
+      .formatDate(
+        date,
+        timezone,
+        "MMMM"
+      )
+      .toUpperCase();
+
+  const dayNum =
+    String(
+      Number(
+        Utilities.formatDate(
+          date,
+          timezone,
+          "d"
+        )
+      )
+    );
+
+  const dateKey =
+    Utilities.formatDate(
+      date,
+      timezone,
+      "yyyy-MM-dd"
+    );
+
+  /*
+   * Passing the Date first routes through WeeklyCacheOS.
+   */
+  const weeklyInfo =
+    findWeeklySheetAndDayRow_(
+      date,
+      day,
+      month,
+      dayNum
+    );
+
+  const items = [];
+
+  if (weeklyInfo) {
+    addDashboardUpcomingWeeklyItems_(
+      items,
+      weeklyInfo
+    );
+  }
+
+  /*
+   * Add a compact PT line.
+   *
+   * Example:
+   * PT | Hana G • 2/6 Filled • 4 Open
+   */
+  if (
+    ptDay &&
+    typeof buildHomeUpcomingPTItem_ ===
+      "function"
+  ) {
+    const ptItem =
+      buildHomeUpcomingPTItem_(
+        ptDay
+      );
+
+    if (ptItem) {
+      items.push(
+        ptItem
+      );
+    }
+  }
+
+  return {
+    date:
+      date,
+
+    dateKey:
+      dateKey,
+
+    day:
+      titleCase_(day) +
+      ", " +
+      titleCase_(month) +
+      " " +
+      dayNum,
+
+    items:
+      items,
+
+    source:
+      weeklyInfo
+        ? weeklyInfo.source || ""
+        : "",
+
+    weeklyName:
+      weeklyInfo &&
+      weeklyInfo.sheet
+        ? weeklyInfo.sheet
+            .getName()
+        : ""
+  };
+}
+
+
+/* =========================================================
+ * WEEKLY ITEMS
+ * ========================================================= */
+
+function addDashboardUpcomingWeeklyItems_(
+  items,
+  weeklyInfo
+) {
+  const values =
+    weeklyInfo.values || [];
+
+  const dayStart =
+    Number(
+      weeklyInfo.dayStart
+    );
+
+  if (
+    !values.length ||
+    isNaN(dayStart)
+  ) {
+    return items;
+  }
+
+  const dayEnd =
+    weeklyInfo.dayEnd !==
+      undefined
+      ? Number(
+          weeklyInfo.dayEnd
+        )
+      : findDayEnd_(
+          values,
+          dayStart
+        );
+
+  const performances =
+    findPerformancesForWeeklyDay_(
+      values,
+      dayStart,
+      dayEnd
+    ) || [];
+
+  const notes =
+    getNotesAndHolidayFromWeeklyDay_(
+      values,
+      dayStart,
+      dayEnd
+    ) || "";
+
+  const rehearsals =
+    getDashboardRehearsalsForWeeklyDay_(
+      values,
+      dayStart,
+      dayEnd
+    );
+
+  const castChanges =
+    getDashboardCastChangesForWeeklyDay_(
+      values,
+      dayStart,
+      dayEnd
+    );
+
+  if (performances.length) {
+    items.push({
+      label:
+        "Performance",
+
+      detail:
+        performances
+          .map(
+            function (performance) {
+              performance =
+                performance || {};
+
+              return (
+                performance.inOutText ||
+                performance.label ||
+                (
+                  performance.number
+                    ? (
+                        "PERFORMANCE #" +
+                        performance.number
+                      )
+                    : ""
+                )
+              );
+            }
+          )
+          .filter(Boolean)
+          .join("\n")
+    });
+  }
+
+  if (rehearsals.length) {
+    items.push({
+      label:
+        "Rehearsal",
+
+      detail:
+        rehearsals.join("\n")
+    });
+  }
+
+  if (castChanges.length) {
+    items.push({
+      label:
+        "Cast Changes",
+
+      detail:
+        castChanges.join("\n")
+    });
+  }
+
+  if (notes) {
+    items.push({
+      label:
+        "Notes",
+
+      detail:
+        String(notes)
+          .replace(/\r/g, "")
+          .replace(/\n{2,}/g, "\n")
+          .trim()
+    });
+  }
+
+  return items;
+}
+
+
+/* =========================================================
+ * WEEKLY SCANNERS
+ * ========================================================= */
+
+function getDashboardRehearsalsForWeeklyDay_(
+  values,
+  dayStart,
+  dayEnd
+) {
+  const rehearsals = [];
+
+  for (
+    let rowIndex = dayStart;
+    rowIndex < dayEnd;
+    rowIndex++
+  ) {
+    const row =
+      values[rowIndex] || [];
+
+    const rowText =
+      row
+        .slice(0, 5)
+        .join(" ");
+
+    const cleanText =
+      String(rowText || "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!cleanText) {
+      continue;
+    }
+
+    const upper =
+      cleanText.toUpperCase();
+
+    if (
+      upper.includes("REHEARSAL") ||
+      upper.includes("PUT-IN") ||
+      upper.includes("PUT IN") ||
+      upper.includes("BRUSH-UP") ||
+      upper.includes("BRUSH UP") ||
+      upper.includes("COMPANY MEETING")
+    ) {
+      rehearsals.push(
+        cleanText
+      );
+    }
+  }
+
+  return Array.from(
+    new Set(rehearsals)
+  ).slice(0, 4);
+}
+
+
+function getDashboardCastChangesForWeeklyDay_(
+  values,
+  dayStart,
+  dayEnd
+) {
+  const changes = [];
+
+  for (
+    let rowIndex = dayStart;
+    rowIndex < dayEnd;
+    rowIndex++
+  ) {
+    const row =
+      values[rowIndex] || [];
+
+    const rowText =
+      row
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!rowText) {
+      continue;
+    }
+
+    const upper =
+      rowText.toUpperCase();
+
+    /*
+     * Do not treat Weekly note bullets as separate
+     * cast-change rows.
+     */
+    if (
+      rowText.startsWith("-") ||
+      upper.includes("NOTES:")
+    ) {
+      continue;
+    }
+
+    if (
+      upper.includes(" OUT") ||
+      upper.includes(" IN") ||
+      upper.includes("OFFICE SHOW")
+    ) {
+      changes.push(
+        rowText
+      );
+    }
+  }
+
+  return Array.from(
+    new Set(changes)
+  ).slice(0, 4);
+}
+
+
+/* =========================================================
+ * READ-ONLY TEST
+ * ========================================================= */
+
+function testHomeUpcoming_DEV() {
+  const upcoming =
+    getDashboardUpcomingFromWeekly_();
+
+  Logger.log(
+    "HOME UPCOMING TEST"
+  );
+
+  Logger.log(
+    JSON.stringify(
+      upcoming,
+      null,
+      2
+    )
+  );
+
+  SpreadsheetApp
+    .getUi()
+    .alert(
+      "Home Upcoming test complete.\n\n" +
+      "Upcoming days found: " +
+      upcoming.length +
+      "\n" +
+      "PT summaries: " +
+      upcoming.reduce(
+        function (
+          count,
+          day
+        ) {
+          const hasPT =
+            Array.isArray(
+              day.items
+            ) &&
+            day.items.some(
+              function (item) {
+                return (
+                  item &&
+                  item.type ===
+                    "pt"
+                );
+              }
+            );
+
+          return count +
+            (
+              hasPT
+                ? 1
+                : 0
+            );
+        },
+        0
+      )
+    );
+
+  return upcoming;
+}

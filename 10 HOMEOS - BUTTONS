@@ -1,0 +1,306 @@
+/*************************************************
+ * 10 HOMEOS - BUTTONS
+ * Version: 4.0.0
+ * Status: ACTIVE
+ *
+ * Home checkbox routing and authorized trigger only.
+ *
+ * Workflow actions live in:
+ * 00 STAGEOS - ACTIONS.gs
+ *************************************************/
+
+function installHomeOSActionTrigger() {
+  removeHomeOSActionTrigger();
+
+  ScriptApp.newTrigger("homeOSInstallableOnEdit_")
+    .forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet())
+    .onEdit()
+    .create();
+
+  SpreadsheetApp.getUi().alert(
+    "HomeOS action trigger installed.\n\n" +
+    "Home mission-action checkboxes can now open dialogs and run authorized workflows."
+  );
+}
+
+function removeHomeOSActionTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === "homeOSInstallableOnEdit_") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+}
+
+function homeOSInstallableOnEdit_(e) {
+  try {
+    if (!e || !e.range) return;
+
+    const range = e.range;
+    const sheet = range.getSheet();
+
+    if (!sheet || sheet.getName() !== "Home") return;
+
+    const note = String(range.getNote() || "").trim();
+    if (!note) return;
+
+    if (note.indexOf("MISSION_ACTION:") === 0) {
+      homeOSHandleMissionActionEdit_(range, note);
+      return;
+    }
+
+    if (
+      note.indexOf(
+        "PT_SLOT:"
+      ) === 0
+    ) {
+      homeOSHandlePTSlotEdit_(
+        range,
+        note
+      );
+
+      return;
+    }
+
+    if (note.indexOf("WORKFLOW_TASK:") === 0) {
+      homeOSHandleWorkflowTaskEdit_(range, note);
+      return;
+    }
+
+    if (note.indexOf("LONG_TERM_TASK_ROW:") === 0) {
+  homeOSHandleLongTermTaskEdit_(range, note);
+  return;
+}
+  } catch (err) {
+    SpreadsheetApp.getUi().alert(
+      "Home action failed:\n\n" +
+      String(err && err.message ? err.message : err)
+    );
+  }
+}
+
+function homeOSHandleMissionActionEdit_(
+  range,
+  note
+) {
+  const value =
+    range.getValue();
+
+  /*
+   * Support:
+   * - New "▶ Run" dropdown
+   * - Older checkbox-based action cells
+   */
+  const wasTriggered =
+    value === true ||
+    String(value || "")
+      .trim() === "▶ Run";
+
+  if (!wasTriggered) {
+    return;
+  }
+
+  const action =
+    String(note || "")
+      .replace(
+        "MISSION_ACTION:",
+        ""
+      )
+      .trim();
+
+  /*
+   * Reset the control before launching the workflow.
+   * This keeps it ready for the next use even if the
+   * downstream workflow opens a dialog.
+   */
+  if (value === true) {
+    range.setValue(false);
+  } else {
+    range.clearContent();
+  }
+
+  if (!action) {
+    return;
+  }
+
+  return runHomeMissionAction_(
+    action
+  );
+}
+/*************************************************
+ * HOME MISSION ACTION ROUTING
+ * Version: 1.1.0
+ *
+ * In 10 HOMEOS - BUTTONS.gs, replace only:
+ *   runHomeMissionAction_
+ *
+ * This adds Upload Receipt and Sync Gmail Receipts while
+ * preserving all existing Home action routes.
+ *************************************************/
+
+function runHomeMissionAction_(
+  action
+) {
+  const actions = {
+    homeButtonPrepInOut:
+      homeButtonPrepInOut,
+
+    homeButtonBuildPerformanceReport:
+      homeButtonBuildPerformanceReport,
+
+    homeButtonDraftReport:
+      homeButtonDraftReport,
+
+    homeButtonAddTask:
+      homeButtonAddTask,
+
+    homeButtonAddOut:
+      homeButtonAddOut,
+
+    homeButtonExportCalendar:
+      homeButtonExportCalendar,
+
+    homeButtonAddLongTermTask:
+      homeButtonAddLongTermTask,
+
+    homeButtonGuestSpellerEmail:
+      homeButtonGuestSpellerEmail,
+
+    homeButtonCreateNextWeeklySchedule:
+      homeButtonCreateNextWeeklySchedule,
+
+    homeButtonWeeklyEmailDraft:
+      homeButtonWeeklyEmailDraft,
+
+    homeButtonPayrollEmailDraft:
+      homeButtonPayrollEmailDraft,
+
+    homeButtonPerishablesEmailDraft:
+      homeButtonPerishablesEmailDraft,
+
+    homeButtonExportInOutPdf:
+      homeButtonExportInOutPdf,
+
+    homeButtonMarkInOutDistributed:
+      homeButtonMarkInOutDistributed,
+
+    homeButtonMarkInsertsToFOH:
+      homeButtonMarkInsertsToFOH,
+
+    homeButtonGuestSpellerPacket:
+      homeButtonGuestSpellerPacket,
+
+    homeButtonUploadReceipt:
+      homeButtonUploadReceipt,
+
+    homeButtonSyncGmailReceipts:
+      homeButtonSyncGmailReceipts
+  };
+
+  const handler =
+    actions[action];
+
+  if (
+    typeof handler !==
+    "function"
+  ) {
+    SpreadsheetApp
+      .getUi()
+      .alert(
+        "No Home action handler found for:\n\n" +
+        action
+      );
+
+    return;
+  }
+
+  return handler();
+}
+
+function homeOSHandleWorkflowTaskEdit_(range, note) {
+  const taskId = note
+    .replace("WORKFLOW_TASK:", "")
+    .trim();
+
+  if (!taskId) return;
+  if (typeof WorkflowStatusOS !== "function") return;
+
+  if (range.getValue() === true) {
+    WorkflowStatusOS().markDone(taskId);
+  } else {
+    WorkflowStatusOS().markOpen(taskId);
+  }
+
+  if (typeof HOME_WORKFLOW_STATUS_CACHE_ !== "undefined") {
+    HOME_WORKFLOW_STATUS_CACHE_ = null;
+  }
+
+  if (typeof updateHomeTaskStylesOnly_ === "function") {
+    updateHomeTaskStylesOnly_();
+  }
+}
+
+function homeOSHandleLongTermTaskEdit_(range, note) {
+  if (range.getValue() !== true) return;
+
+  const sourceRow = Number(
+    note.replace("LONG_TERM_TASK_ROW:", "")
+  );
+
+  if (!sourceRow) return;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  const taskSheet =
+    ss.getSheetByName("Long-Term Tasks") ||
+    ss.getSheetByName("Long Term Tasks");
+
+  if (!taskSheet) {
+    throw new Error('Could not find "Long-Term Tasks" sheet.');
+  }
+
+  const headerA = String(
+    taskSheet.getRange(1, 1).getDisplayValue() || ""
+  ).toLowerCase();
+
+  if (headerA.indexOf("task") !== -1) {
+    taskSheet.getRange(sourceRow, 4).setValue("Done");
+  } else {
+    taskSheet.getRange(sourceRow, 1).setValue(true);
+  }
+
+  refreshHomeAfterWorkflow_();
+}
+
+function testHomeOSActionRouting() {
+  const results = [
+    { name: "homeButtonPrepInOut", available: typeof homeButtonPrepInOut === "function" },
+    { name: "homeButtonBuildPerformanceReport", available: typeof homeButtonBuildPerformanceReport === "function" },
+    { name: "homeButtonDraftReport", available: typeof homeButtonDraftReport === "function" },
+    { name: "homeButtonAddOut", available: typeof homeButtonAddOut === "function" },
+    { name: "homeButtonExportCalendar", available: typeof homeButtonExportCalendar === "function" },
+    { name: "homeButtonCreateNextWeeklySchedule", available: typeof homeButtonCreateNextWeeklySchedule === "function" },
+    { name: "homeButtonWeeklyEmailDraft", available: typeof homeButtonWeeklyEmailDraft === "function" },
+    { name: "homeButtonPayrollEmailDraft", available: typeof homeButtonPayrollEmailDraft === "function" },
+    { name: "homeButtonPerishablesEmailDraft", available: typeof homeButtonPerishablesEmailDraft === "function" },
+    { name: "homeButtonExportInOutPdf", available: typeof homeButtonExportInOutPdf === "function" },
+    { name: "homeButtonGuestSpellerPacket", available: typeof homeButtonGuestSpellerPacket === "function" }
+  ];
+
+  const missing = results.filter(function (item) {
+    return !item.available;
+  });
+
+  SpreadsheetApp.getUi().alert(
+    "HomeOS action routing test.\n\n" +
+    "Actions checked: " + results.length + "\n" +
+    "Missing: " + missing.length +
+    (missing.length
+      ? "\n\n" + missing.map(function (item) { return item.name; }).join("\n")
+      : "")
+  );
+
+  return {
+    checked: results.length,
+    missing: missing
+  };
+}

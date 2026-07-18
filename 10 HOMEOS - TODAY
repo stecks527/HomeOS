@@ -1,0 +1,198 @@
+/*************************************************
+ * 10 HOMEOS - TODAY
+ * Version: 1.0.0
+ *
+ * Draws the left-side summary for one Home event block.
+ * Event classification and timeline assignment belong to
+ * 10 HOMEOS - EVENTBLOCK.
+ *************************************************/
+
+function drawHomeV3TodayBlock_(
+  sh,
+  startRow,
+  blockRows,
+  block
+) {
+  block = block || {};
+
+  const theme =
+    getHomeV2Theme_();
+
+  const bodyRows =
+    Math.max(
+      Number(blockRows || 1) - 1,
+      6
+    );
+
+  const summary =
+    block.summary || {};
+
+  const title =
+    String(
+      summary.title ||
+      block.title ||
+      "TODAY'S EVENT"
+    );
+
+  const primary =
+    String(
+      summary.primary ||
+      block.timeText ||
+      ""
+    );
+
+  const label =
+    String(
+      summary.label ||
+      ""
+    );
+
+  const value =
+    String(
+      summary.value ||
+      ""
+    );
+
+  drawHomeV3TodayHeader_(
+    sh,
+    startRow,
+    block.header ||
+    "TODAY'S EVENTS"
+  );
+
+  const bodyStart =
+    startRow + 1;
+
+  /*
+   * Six-row minimum:
+   * 1–2 title
+   * 3–4 primary time
+   * 5 label
+   * 6+ value / remaining vertical space
+   */
+  sh.getRange(
+    bodyStart,
+    HOME_V2.LEFT_COL,
+    2,
+    HOME_V2.LEFT_WIDTH
+  )
+    .merge()
+    .setValue(title)
+    .setBackground(theme.cardColor)
+    .setFontFamily(HOME_V2.FONT)
+    .setFontSize(17)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("bottom")
+    .setWrap(true);
+
+  sh.setRowHeight(bodyStart, 30);
+  sh.setRowHeight(bodyStart + 1, 28);
+
+  sh.getRange(
+    bodyStart + 2,
+    HOME_V2.LEFT_COL,
+    2,
+    HOME_V2.LEFT_WIDTH
+  )
+    .merge()
+    .setValue(primary)
+    .setBackground(theme.cardColor)
+    .setFontFamily(HOME_V2.FONT)
+    .setFontSize(30)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setWrap(true);
+
+  sh.setRowHeight(bodyStart + 2, 34);
+  sh.setRowHeight(bodyStart + 3, 34);
+
+  sh.getRange(
+    bodyStart + 4,
+    HOME_V2.LEFT_COL,
+    1,
+    HOME_V2.LEFT_WIDTH
+  )
+    .merge()
+    .setValue(label)
+    .setBackground(theme.cardColor)
+    .setFontFamily(HOME_V2.FONT)
+    .setFontSize(9)
+    .setFontWeight("bold")
+    .setFontColor(theme.mutedText)
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("bottom");
+
+  sh.setRowHeight(bodyStart + 4, 22);
+
+  const valueRows =
+    Math.max(
+      bodyRows - 5,
+      1
+    );
+
+  sh.getRange(
+    bodyStart + 5,
+    HOME_V2.LEFT_COL,
+    valueRows,
+    HOME_V2.LEFT_WIDTH
+  )
+    .merge()
+    .setValue(value)
+    .setBackground(theme.cardColor)
+    .setFontFamily(HOME_V2.FONT)
+    .setFontSize(15)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("top")
+    .setWrap(true);
+
+  for (
+    let row = bodyStart + 5;
+    row < bodyStart + 5 + valueRows;
+    row++
+  ) {
+    sh.setRowHeight(row, 30);
+  }
+
+  styleHomeV2OuterCardOnly_(
+    sh,
+    startRow,
+    HOME_V2.LEFT_COL,
+    blockRows,
+    HOME_V2.LEFT_WIDTH
+  );
+}
+
+
+function drawHomeV3TodayHeader_(
+  sh,
+  row,
+  title
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  sh.getRange(
+    row,
+    HOME_V2.LEFT_COL,
+    1,
+    HOME_V2.LEFT_WIDTH
+  )
+    .merge()
+    .setValue(
+      title ||
+      "TODAY'S EVENTS"
+    )
+    .setBackground(theme.primaryColor)
+    .setFontFamily(HOME_V2.FONT)
+    .setFontColor("#FFFFFF")
+    .setFontSize(11)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setFontLine("none");
+
+  sh.setRowHeight(row, 30);
+}

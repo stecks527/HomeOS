@@ -1,0 +1,74 @@
+/*************************************************
+ * 10 HOMEOS - FORMATTING
+ * Version: 1.0.0
+ *************************************************/
+
+function setupMissionControlSheet_(sh) {
+  sh.clear();
+  sh.getRange("A1:I120").breakApart();
+  sh.getImages().forEach(img => img.remove());
+
+  sh.getImages().forEach(img => img.remove());
+
+  sh.clearNotes();
+  sh.clearConditionalFormatRules();
+  sh.getRange("A1:I120").clearDataValidations();
+
+  sh.setHiddenGridlines(true);
+
+  const widths = [70, 90, 170, 170, 170, 170, 170, 170, 170];
+
+  widths.forEach((width, i) => {
+    sh.setColumnWidth(i + 1, width);
+  });
+
+  sh.getRange("A1:I120")
+    .setFontFamily("Arial")
+    .setVerticalAlignment("middle")
+    .setWrap(true)
+    .setBackground("#ffffff")
+    .setFontLine("none");
+}
+
+function drawCardTitle_(sh, row, title) {
+  return drawCardTitleAt_(sh, row, 1, 9, title);
+}
+
+function drawCardTitleAt_(sh, row, col, width, title) {
+  sh.getRange(row, col, 1, width)
+    .merge()
+    .setValue(title)
+    .setFontSize(12)
+    .setFontWeight("bold")
+    .setFontColor("white")
+    .setBackground("#2457c5")
+    .setHorizontalAlignment("center")
+    .setFontLine("none");
+
+  sh.setRowHeight(row, 28);
+
+  return row + 1;
+}
+
+function drawEmptyLine_(sh, row, text) {
+  sh.getRange(row, 1, 1, 9)
+    .merge()
+    .setValue(text)
+    .setFontSize(13)
+    .setFontColor("#666666")
+    .setHorizontalAlignment("center")
+    .setFontLine("none");
+
+  sh.setRowHeight(row, 34);
+
+  return row + 1;
+}
+
+function formatDashboardPerformance_(performanceText) {
+  const text = String(performanceText || "").trim();
+  if (!text) return "No performance selected";
+
+  return text
+    .replace(/\s*-\s*/g, "\n")
+    .replace(/\s{2,}/g, " ");
+}

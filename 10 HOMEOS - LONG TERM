@@ -1,0 +1,47 @@
+/*************************************************
+ * 10 HOMEOS - LONG TERM
+ * Version: 2.0.0
+ *************************************************/
+
+function getLongTermTasks_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  const sh =
+    ss.getSheetByName("Long-Term Tasks") ||
+    ss.getSheetByName("Long Term Tasks");
+
+  if (!sh) return [];
+
+  const values = sh.getDataRange().getDisplayValues();
+  const tasks = [];
+
+  const usesNewFormat =
+    String(values[0] && values[0][0] || "").toLowerCase().includes("task");
+
+  for (let r = 1; r < values.length; r++) {
+    let done, task, note, dueDate;
+
+    if (usesNewFormat) {
+      task = String(values[r][0] || "").trim();
+      dueDate = String(values[r][1] || "").trim();
+      note = String(values[r][2] || "").trim();
+      done = String(values[r][3] || "").toLowerCase().includes("done");
+    } else {
+      done = parseDashboardBoolean_(values[r][0]);
+      task = String(values[r][1] || "").trim();
+      note = String(values[r][2] || "").trim();
+      dueDate = String(values[r][3] || "").trim();
+    }
+
+    if (done || !task) continue;
+
+    tasks.push({
+      sourceRow: r + 1,
+      task,
+      note,
+      dueDate
+    });
+  }
+
+  return tasks;
+}

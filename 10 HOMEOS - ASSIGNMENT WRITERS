@@ -1,0 +1,956 @@
+/*************************************************
+ * 10 HOMEOS - ASSIGNMENT WRITERS
+ * Version: 3.0.0
+ * Status: ACTIVE
+ *
+ * Writes PrepOS staffing assignments to:
+ * - IN/OUT
+ * - Performance Report
+ *
+ * Also writes separate Stage Management and
+ * Audio training notes into the correct note areas.
+ *************************************************/
+
+
+/* =========================================================
+ * MAIN WRITER
+ * ========================================================= */
+
+function writeShowAssignmentsFromPayload_(payload) {
+  payload = payload || {};
+
+  const ss =
+    SpreadsheetApp
+      .getActiveSpreadsheet();
+
+  const inOut =
+    ss.getSheetByName(
+      "IN/OUT"
+    );
+
+  const report =
+    ss.getSheetByName(
+      "Performance Report"
+    );
+
+  const assignments =
+    payload.assignments || {};
+
+  const values =
+    assignments.values || {};
+
+  const training =
+    assignments.training || {};
+
+  const stageManagementTraining =
+    training.stageManagement || {};
+
+  const audioTraining =
+    training.audio || {};
+
+  const callingSM =
+    buildStaffingDisplayValue_(
+      values.calling || "",
+      stageManagementTraining,
+      "calling"
+    );
+
+  const deckSM =
+    buildStaffingDisplayValue_(
+      values.deck || "",
+      stageManagementTraining,
+      "deck"
+    );
+
+  const conductor =
+    prepOSFirstNonBlank_(
+      payload.conductor,
+      values.conductor
+    );
+
+  const a1Mixer =
+    buildStaffingDisplayValue_(
+      values.audio || "",
+      audioTraining,
+      "audio"
+    );
+
+  if (inOut) {
+    writePrepAssignmentsToInOut_(
+      inOut,
+      {
+        callingSM:
+          callingSM,
+
+        deckSM:
+          deckSM,
+
+        conductor:
+          conductor
+      }
+    );
+  }
+
+  if (report) {
+    writePrepAssignmentsToReport_(
+      report,
+      {
+        callingSM:
+          callingSM,
+
+        deckSM:
+          deckSM,
+
+        conductor:
+          conductor,
+
+        a1Mixer:
+          a1Mixer
+      }
+    );
+  }
+
+  writeShowAssignmentTrainingNotes_(
+    payload
+  );
+
+  return {
+    callingSM:
+      callingSM,
+
+    deckSM:
+      deckSM,
+
+    conductor:
+      conductor,
+
+    a1Mixer:
+      a1Mixer
+  };
+}
+
+
+/* =========================================================
+ * IN/OUT WRITER
+ * ========================================================= */
+
+function writePrepAssignmentsToInOut_(
+  inOut,
+  staffing
+) {
+  const layout =
+    typeof PrepLayout ===
+      "function"
+      ? PrepLayout().inOut
+      : {
+          staffingStartRow: 21,
+          staffingNumRows: 4
+        };
+
+  inOut.showRows(
+    layout.staffingStartRow,
+    layout.staffingNumRows
+  );
+
+  /*
+   * Canonical IN/OUT staffing locations:
+   *
+   * A22 — Calling SM
+   * E22 — Deck SM
+   * A24 — Conductor
+   */
+  inOut
+    .getRange("A22")
+    .setValue(
+      staffing.callingSM || ""
+    );
+
+  inOut
+    .getRange("E22")
+    .setValue(
+      staffing.deckSM || ""
+    );
+
+  inOut
+    .getRange("A24")
+    .setValue(
+      staffing.conductor || ""
+    );
+}
+
+
+/* =========================================================
+ * PERFORMANCE REPORT WRITER
+ * ========================================================= */
+
+function writePrepAssignmentsToReport_(
+  report,
+  staffing
+) {
+  const layout =
+    typeof PrepLayout ===
+      "function"
+      ? PrepLayout()
+          .performanceReport
+      : {
+          callingSMCell: "C5",
+          deckSMCell: "C6",
+          conductorCell: "C7",
+          a1Cell: "C8"
+        };
+
+  report
+    .getRange(
+      layout.callingSMCell
+    )
+    .setValue(
+      staffing.callingSM || ""
+    );
+
+  report
+    .getRange(
+      layout.deckSMCell
+    )
+    .setValue(
+      staffing.deckSM || ""
+    );
+
+  report
+    .getRange(
+      layout.conductorCell
+    )
+    .setValue(
+      staffing.conductor || ""
+    );
+
+  report
+    .getRange(
+      layout.a1Cell
+    )
+    .setValue(
+      staffing.a1Mixer || ""
+    );
+}
+
+
+/* =========================================================
+ * STAFFING DISPLAY
+ * ========================================================= */
+
+function buildStaffingDisplayValue_(
+  primaryName,
+  training,
+  trackId
+) {
+  const primary =
+    prepOSClean_(
+      primaryName
+    );
+
+  training =
+    training || {};
+
+  if (
+    !training.enabled
+  ) {
+    return primary;
+  }
+
+  if (
+    training.trackId &&
+    training.trackId !== trackId
+  ) {
+    return primary;
+  }
+
+  const trainee =
+    prepOSClean_(
+      training.trainee
+    );
+
+  const trainer =
+    prepOSClean_(
+      training.trainer
+    );
+
+  const mode =
+    prepOSClean_(
+      training.mode ||
+      "Training"
+    );
+
+  if (
+    !trainee &&
+    !trainer
+  ) {
+    return primary;
+  }
+
+  if (
+    mode.toLowerCase() ===
+    "shadowing"
+  ) {
+    const shadowingNames =
+      uniqueSorted_(
+        [
+          trainee,
+          trainer || primary
+        ].filter(Boolean)
+      );
+
+    return (
+      shadowingNames.join(" / ") +
+      " (Shadowing)"
+    );
+  }
+
+  const trainingNames =
+    [
+      primary,
+      trainee
+    ].filter(Boolean);
+
+  return (
+    uniqueSorted_(
+      trainingNames
+    ).join(" / ") +
+    " (Training)"
+  );
+}
+
+
+/* =========================================================
+ * TRAINING NOTES
+ * ========================================================= */
+
+function writeShowAssignmentTrainingNotes_(
+  payload
+) {
+  payload = payload || {};
+
+  const assignments =
+    payload.assignments || {};
+
+  const training =
+    assignments.training || {};
+
+  const tracks =
+    assignments.tracks || [];
+
+  const stageManagementLine =
+    buildPrepTrainingNoteLine_(
+      "stageManagement",
+      training.stageManagement,
+      tracks
+    );
+
+  const audioLine =
+    buildPrepTrainingNoteLine_(
+      "audio",
+      training.audio,
+      tracks
+    );
+
+  if (stageManagementLine) {
+    appendPrepTrainingNoteToInOut_(
+      stageManagementLine
+    );
+  }
+
+  if (audioLine) {
+    appendPrepAudioTrainingNoteToReport_(
+      audioLine
+    );
+  }
+
+  return {
+    stageManagement:
+      stageManagementLine,
+
+    audio:
+      audioLine
+  };
+}
+
+
+function buildPrepTrainingNoteLine_(
+  groupId,
+  training,
+  tracks
+) {
+  training =
+    training || {};
+
+  if (
+    !training.enabled
+  ) {
+    return "";
+  }
+
+  const track =
+    (tracks || [])
+      .find(function (item) {
+        return (
+          item.id ===
+          training.trackId
+        );
+      });
+
+  const trackLabel =
+    track
+      ? track.label
+      : prepOSFirstNonBlank_(
+          training.trackLabel,
+          training.trackId,
+          groupId === "audio"
+            ? "A1 / Mixer"
+            : "Stage Management"
+        );
+
+  const trainee =
+    prepOSClean_(
+      training.trainee
+    );
+
+  const trainer =
+    prepOSClean_(
+      training.trainer
+    );
+
+  const mode =
+    prepOSClean_(
+      training.mode ||
+      "Training"
+    );
+
+  const customNote =
+    prepOSClean_(
+      training.note
+    );
+
+  const parts = [];
+
+  if (trainee) {
+    parts.push(
+      trainee +
+      " " +
+      (
+        mode.toLowerCase() ===
+        "shadowing"
+          ? "shadowing"
+          : "training on"
+      ) +
+      " " +
+      trackLabel
+    );
+  }
+
+  if (trainer) {
+    parts.push(
+      "Trainer: " +
+      trainer
+    );
+  }
+
+  if (customNote) {
+    parts.push(
+      customNote
+    );
+  }
+
+  if (!parts.length) {
+    return "";
+  }
+
+  return (
+    "- " +
+    parts.join(" — ")
+  );
+}
+
+
+/* =========================================================
+ * STAGE MANAGEMENT TRAINING NOTE
+ *
+ * Routes to IN/OUT General Notes.
+ * ========================================================= */
+
+function appendPrepTrainingNoteToInOut_(
+  trainingLine
+) {
+  const inOut =
+    prepOSSheet_(
+      "IN/OUT"
+    );
+
+  if (!inOut) return false;
+
+  const notesCell =
+    inOut.getRange("A26");
+
+  const current =
+    prepOSCleanMultiline_(
+      notesCell
+        .getDisplayValue()
+    );
+
+  const updated =
+    appendUniquePrepNoteLine_(
+      current,
+      trainingLine
+    );
+
+  notesCell.setValue(
+    updated
+  );
+
+  return true;
+}
+
+
+/* =========================================================
+ * AUDIO TRAINING NOTE
+ *
+ * Attempts to write directly beneath the Sound header.
+ * Falls back to IN/OUT notes so the information is never lost.
+ * ========================================================= */
+
+function appendPrepAudioTrainingNoteToReport_(
+  trainingLine
+) {
+  const report =
+    prepOSSheet_(
+      "Performance Report"
+    );
+
+  if (!report) {
+    return appendPrepTrainingNoteToInOut_(
+      trainingLine
+    );
+  }
+
+  const target =
+    findPrepReportSectionWriteCell_(
+      report,
+      [
+        "SOUND:",
+        "SOUND",
+        "AUDIO:",
+        "AUDIO"
+      ]
+    );
+
+  if (!target) {
+    return appendPrepTrainingNoteToInOut_(
+      trainingLine
+    );
+  }
+
+  const current =
+    prepOSCleanMultiline_(
+      target.getDisplayValue()
+    );
+
+  target
+    .setValue(
+      appendUniquePrepNoteLine_(
+        current,
+        trainingLine
+      )
+    )
+    .setFontFamily("Arial")
+    .setFontSize(11)
+    .setWrap(true);
+
+  return true;
+}
+
+
+/* =========================================================
+ * REPORT SECTION LOOKUP
+ * ========================================================= */
+
+function findPrepReportSectionWriteCell_(
+  report,
+  headerOptions
+) {
+  const lastRow =
+    report.getLastRow();
+
+  const lastColumn =
+    Math.min(
+      report.getLastColumn(),
+      10
+    );
+
+  if (
+    !lastRow ||
+    !lastColumn
+  ) {
+    return null;
+  }
+
+  const values =
+    report
+      .getRange(
+        1,
+        1,
+        lastRow,
+        lastColumn
+      )
+      .getDisplayValues();
+
+  const wanted =
+    (headerOptions || [])
+      .map(function (header) {
+        return prepOSNormalizeReportHeader_(
+          header
+        );
+      });
+
+  for (
+    let row = 0;
+    row < values.length;
+    row++
+  ) {
+    const headerFound =
+      values[row].some(
+        function (value) {
+          return (
+            wanted.indexOf(
+              prepOSNormalizeReportHeader_(
+                value
+              )
+            ) !== -1
+          );
+        }
+      );
+
+    if (!headerFound) continue;
+
+    /*
+     * Search for the first writable content row
+     * beneath the section header.
+     */
+    for (
+      let candidateRow = row + 1;
+      candidateRow <
+        Math.min(
+          values.length,
+          row + 8
+        );
+      candidateRow++
+    ) {
+      const rowText =
+        values[candidateRow]
+          .join(" ")
+          .trim();
+
+      if (
+        prepOSLooksLikeReportHeader_(
+          rowText
+        )
+      ) {
+        break;
+      }
+
+      const target =
+        report.getRange(
+          candidateRow + 1,
+          1
+        );
+
+      if (
+        !target.isPartOfMerge() ||
+        target
+          .getMergedRanges()
+          .length
+      ) {
+        return target;
+      }
+    }
+  }
+
+  return null;
+}
+
+
+function prepOSNormalizeReportHeader_(
+  value
+) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/:$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+function prepOSLooksLikeReportHeader_(
+  value
+) {
+  const text =
+    String(value || "")
+      .trim();
+
+  if (!text) return false;
+
+  return (
+    /^[A-Z][A-Z &/()-]{2,}:?$/.test(
+      text
+    )
+  );
+}
+
+
+/* =========================================================
+ * NOTE DEDUPLICATION
+ * ========================================================= */
+
+function appendUniquePrepNoteLine_(
+  existingText,
+  newLine
+) {
+  const existing =
+    prepOSCleanMultiline_(
+      existingText
+    );
+
+  const line =
+    prepOSClean_(
+      newLine
+    );
+
+  if (!line) return existing;
+
+  const existingLines =
+    existing
+      ? existing
+          .split("\n")
+          .map(function (item) {
+            return item.trim();
+          })
+      : [];
+
+  const normalizedNew =
+    line
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+
+  const alreadyExists =
+    existingLines.some(
+      function (item) {
+        return (
+          item
+            .toLowerCase()
+            .replace(/\s+/g, " ") ===
+          normalizedNew
+        );
+      }
+    );
+
+  if (alreadyExists) {
+    return existing;
+  }
+
+  return (
+    existing
+      ? existing + "\n" + line
+      : line
+  );
+}
+
+
+/* =========================================================
+ * READ-ONLY TEST
+ * ========================================================= */
+
+function testPrepOSAssignmentWriters() {
+  const samplePayload = {
+    conductor:
+      "Test Conductor",
+
+    assignments: {
+      tracks: [
+        {
+          id: "calling",
+          label: "Calling SM",
+          departmentGroup:
+            "stageManagement"
+        },
+        {
+          id: "deck",
+          label: "Deck SM",
+          departmentGroup:
+            "stageManagement"
+        },
+        {
+          id: "audio",
+          label: "A1 / Mixer",
+          departmentGroup:
+            "audio"
+        }
+      ],
+
+      values: {
+        calling:
+          "Rachel A. Zucker",
+
+        deck:
+          "Chris Steckel",
+
+        audio:
+          "Corbin Lenard"
+      },
+
+      training: {
+        stageManagement: {
+          enabled:
+            true,
+
+          trackId:
+            "calling",
+
+          trainer:
+            "Rachel A. Zucker",
+
+          trainee:
+            "Test Trainee",
+
+          mode:
+            "Training",
+
+          note:
+            ""
+        },
+
+        audio: {
+          enabled:
+            true,
+
+          trackId:
+            "audio",
+
+          trainer:
+            "Corbin Lenard",
+
+          trainee:
+            "Test Audio Trainee",
+
+          mode:
+            "Training",
+
+          note:
+            ""
+        }
+      }
+    }
+  };
+
+  const result = {
+    callingDisplay:
+      buildStaffingDisplayValue_(
+        samplePayload
+          .assignments
+          .values
+          .calling,
+
+        samplePayload
+          .assignments
+          .training
+          .stageManagement,
+
+        "calling"
+      ),
+
+    deckDisplay:
+      buildStaffingDisplayValue_(
+        samplePayload
+          .assignments
+          .values
+          .deck,
+
+        samplePayload
+          .assignments
+          .training
+          .stageManagement,
+
+        "deck"
+      ),
+
+    audioDisplay:
+      buildStaffingDisplayValue_(
+        samplePayload
+          .assignments
+          .values
+          .audio,
+
+        samplePayload
+          .assignments
+          .training
+          .audio,
+
+        "audio"
+      ),
+
+    stageManagementNote:
+      buildPrepTrainingNoteLine_(
+        "stageManagement",
+
+        samplePayload
+          .assignments
+          .training
+          .stageManagement,
+
+        samplePayload
+          .assignments
+          .tracks
+      ),
+
+    audioNote:
+      buildPrepTrainingNoteLine_(
+        "audio",
+
+        samplePayload
+          .assignments
+          .training
+          .audio,
+
+        samplePayload
+          .assignments
+          .tracks
+      )
+  };
+
+  Logger.log(
+    "PREPOS ASSIGNMENT WRITER TEST"
+  );
+
+  Logger.log(
+    JSON.stringify(
+      result,
+      null,
+      2
+    )
+  );
+
+  SpreadsheetApp
+    .getUi()
+    .alert(
+      "PrepOS assignment writer test passed.\n\n" +
+      "Calling: " +
+      result.callingDisplay +
+      "\n" +
+      "Deck: " +
+      result.deckDisplay +
+      "\n" +
+      "Audio: " +
+      result.audioDisplay +
+      "\n\n" +
+      result.stageManagementNote +
+      "\n" +
+      result.audioNote
+    );
+
+  return result;
+}

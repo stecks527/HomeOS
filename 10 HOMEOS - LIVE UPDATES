@@ -1,0 +1,230 @@
+/*************************************************
+ * 10 HOMEOS - LIVE UPDATES
+ * Version: 1.0.0
+ *
+ * Lightweight Home updates.
+ * Does NOT rebuild Home.
+ *************************************************/
+
+function HomeLiveUpdateOS() {
+  return {
+    timeline: function () {
+      return updateHomeTimelineHighlightOnly();
+    },
+
+    tasks: function () {
+      return updateHomeTaskStylesOnly();
+    }
+  };
+}
+
+/*************************************************
+ * TIMELINE ONLY
+ *************************************************/
+
+function updateHomeTimelineHighlightOnly() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName("Home");
+  if (!sh) return;
+
+  const timelineRange = findHomeTimelineRange_(sh);
+  if (!timelineRange) return;
+
+  const visiblePerfNumber = getVisibleTimelinePerformanceNumber_(timelineRange);
+  const activePerfNumber = getHomeActivePerformanceNumberForClock_();
+
+  if (
+    visiblePerfNumber &&
+    activePerfNumber &&
+    String(visiblePerfNumber) !== String(activePerfNumber)
+  ) {
+    refreshStageOSDashboard_DEV();
+    return;
+  }
+
+  const now = new Date();
+  const values = timelineRange.getDisplayValues();
+
+  let currentOffset = -1;
+
+  for (let i = 0; i < values.length; i++) {
+    const timeText = values[i][0];
+    const eventTime = parseHomeTimelineTime_(timeText, now);
+    if (!eventTime) continue;
+
+    if (eventTime.getTime() <= now.getTime()) {
+      currentOffset = i;
+    }
+  }
+
+  if (currentOffset === -1) currentOffset = 0;
+
+  for (let i = 0; i < values.length; i++) {
+    const row = timelineRange.getRow() + i;
+    const isCurrent = i === currentOffset;
+    const isPast = i < currentOffset;
+
+    const bg = isCurrent ? "#fff2cc" : isPast ? "#f3f3f3" : "#ffffff";
+    const fontColor = isPast ? "#888888" : "#000000";
+    const fontWeight = isCurrent ? "bold" : "normal";
+
+    sh.getRange(row, 5, 1, 5)
+      .setBackground(bg)
+      .setFontColor(fontColor)
+      .setFontWeight(fontWeight);
+  }
+}
+
+/*************************************************
+ * FIND TIMELINE BLOCK
+ *************************************************/
+
+function findHomeTimelineRange_(sh) {
+  const values = sh.getRange("A1:I80").getDisplayValues();
+
+  let headerRow = null;
+
+  for (let r = 0; r < values.length; r++) {
+    const rowText = values[r].join(" ").toUpperCase();
+    if (rowText.includes("SHOW CALL TIMELINE")) {
+      headerRow = r + 1;
+      break;
+    }
+  }
+
+  if (!headerRow) return null;
+
+  const startRow = headerRow + 1;
+  let endRow = startRow;
+
+  for (let r = startRow; r <= 80; r++) {
+    const timeText = sh.getRange(r, 5).getDisplayValue();
+    const eventText = sh.getRange(r, 6).getDisplayValue();
+
+    if (!timeText && !eventText) break;
+
+    if (String(eventText).toUpperCase().includes("CURRENT FOCUS")) break;
+    if (String(eventText).toUpperCase().includes("TODAY'S TASKS")) break;
+
+    endRow = r;
+  }
+
+  if (endRow < startRow) return null;
+
+  return sh.getRange(startRow, 5, endRow - startRow + 1, 5);
+}
+
+/*************************************************
+ * TIME PARSING
+ *************************************************/
+
+function parseHomeTimelineTime_(timeText, baseDate) {
+  const match = String(timeText || "").match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!match) return null;
+
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const ampm = match[3].toUpperCase();
+
+  if (ampm === "PM" && hour !== 12) hour += 12;
+  if (ampm === "AM" && hour === 12) hour = 0;
+
+  const output = new Date(baseDate);
+  output.setHours(hour, minute, 0, 0);
+
+  return output;
+}
+
+/*************************************************
+ * TASK STYLES ONLY
+ *************************************************/
+
+function updateHomeTaskStylesOnly() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName("Home");
+  if (!sh) return;
+
+  const range = sh.getRange("A1:I120");
+  const notes = range.getNotes();
+
+  for (let r = 0; r < notes.length; r++) {
+    const note = notes[r][0];
+
+    if (!note || !note.startsWith("WORKFLOW_TASK:")) continue;
+
+    const row = r + 1;
+    const checked = sh.getRange(row, 1).getValue() === true;
+
+    sh.getRange(row, 2, 1, 5)
+      .setFontColor(checked ? "#777777" : "#000000")
+      .setFontLine(checked ? "line-through" : "none");
+  }
+}
+
+function getVisibleTimelinePerformanceNumber_(timelineRange) {
+  const values = timelineRange.getDisplayValues();
+
+  for (let i = values.length - 1; i >= 0; i--) {
+    const rowText = values[i].join(" ");
+    const match = rowText.match(/PERFORMANCE\s*#?\s*(\d+)/i);
+    if (match) return match[1];
+  }
+
+  return "";
+}
+
+function getHomeActivePerformanceNumberForClock_() {
+  const ctx =
+    typeof buildHomeContext_ === "function"
+      ? buildHomeContext_()
+      : null;
+
+  const showState = ctx ? ctx.showState : buildHomeShowStateFromDecisionOS_(DecisionOS().today());
+  const performances = showState.performances || [];
+
+  if (!performances.length) return "";
+
+  const now = new Date();
+
+  const perfsWithTimes = performances
+    .map(perf => {
+      const timeText = perf.inOutText || "";
+      const match = String(timeText).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (!match) return null;
+
+      let hour = Number(match[1]);
+      const minute = Number(match[2]);
+      const ampm = match[3].toUpperCase();
+
+      if (ampm === "PM" && hour !== 12) hour += 12;
+      if (ampm === "AM" && hour === 12) hour = 0;
+
+      const date = new Date(now);
+      date.setHours(hour, minute, 0, 0);
+
+      return {
+        number: perf.number || "",
+        time: date
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.time.getTime() - b.time.getTime());
+
+  let active = perfsWithTimes[0];
+
+  perfsWithTimes.forEach(perf => {
+    if (perf.time.getTime() <= now.getTime()) {
+      active = perf;
+    }
+  });
+
+  return active ? active.number : "";
+}
+
+/*************************************************
+ * TEST
+ *************************************************/
+
+function testHomeLiveTimelineUpdate() {
+  updateHomeTimelineHighlightOnly();
+}

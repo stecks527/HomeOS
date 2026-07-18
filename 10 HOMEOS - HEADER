@@ -1,0 +1,104 @@
+/*************************************************
+ * 10 HOMEOS - HEADER
+ * StageOS v0.5
+ *
+ * Responsibilities
+ * ----------------
+ * • Show title
+ * • Current date
+ * • Command Bar
+ *************************************************/
+
+/*************************************************
+ * HEADER
+ *************************************************/
+
+function drawMissionHeader_(sh, row, showState) {
+  drawMissionHeaderFallback_(sh, row);
+
+  sh.setRowHeight(row, 58);
+  row++;
+
+  sh.getRange(row, 1, 1, 9)
+    .breakApart()
+    .merge()
+    .clearContent()
+    .setValue(showState.prettyDate || "")
+    .setFontSize(18)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setBackground("#ffffff")
+    .setFontColor("#000000");
+
+  sh.setRowHeight(row, 34);
+  row++;
+
+  sh.setRowHeight(row, 18);
+
+  return row + 1;
+}
+
+function drawMissionKeyArt_(sh, row) {
+  removeMissionHeaderImages_(sh);
+
+  sh.getRange(row, 1, 1, 9)
+    .merge()
+    .clearContent()
+    .setBackground("#ffffff")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+
+  const settings = SpreadsheetApp.getActive().getSheetByName("Production Settings");
+  const url = settings ? String(settings.getRange("B13").getDisplayValue()).trim() : "";
+  const fileId = extractStageOSDriveId_(url);
+
+  if (!fileId) {
+    drawMissionHeaderFallback_(sh, row);
+    return;
+  }
+
+  try {
+    const imageUrl = "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w1600";
+    const blob = UrlFetchApp.fetch(imageUrl, {
+      headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }
+    }).getBlob();
+
+    const image = sh.insertImage(blob, 2, row, 210, 8);
+
+    image.setWidth(820);
+    image.setHeight(140);
+
+    sh.setRowHeight(row, 155);
+
+  } catch (err) {
+    Logger.log("Key art failed: " + err.message);
+    drawMissionHeaderFallback_(sh, row);
+  }
+}
+
+function drawMissionHeaderFallback_(sh, row) {
+  const title =
+    typeof getStageOSSetting === "function"
+      ? getStageOSSetting("Production Name", "StageOS")
+      : "StageOS";
+
+  sh.getRange(row, 1, 1, 9)
+    .merge()
+    .setValue(title)
+    .setFontColor("white")
+    .setFontWeight("bold")
+    .setFontSize(22)
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setBackground("#2457c5");
+}
+
+function removeMissionHeaderImages_(sh) {
+  sh.getImages().forEach(img => {
+    const cell = img.getAnchorCell();
+    if (cell && cell.getRow() <= 2) {
+      img.remove();
+    }
+  });
+}

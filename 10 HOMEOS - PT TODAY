@@ -1,0 +1,1764 @@
+/*************************************************
+ * 10 HOMEOS - PT TODAY
+ * Version: 2.0.0
+ * Status: ACTIVE
+ *
+ * Lightweight Physical Therapy integration for HomeOS.
+ *
+ * Responsibilities:
+ * - Read PT sessions from the external PT workbook.
+ * - Provide compact PT summaries for Upcoming.
+ * - Display today's PT session or the next PT session.
+ * - Display all six appointment slots.
+ * - Allow appointment editing directly from Home.
+ * - Write Home edits back to the PT Signup workbook.
+ *
+ * Home Upcoming rendering remains in:
+ * 06g HOME UPCOMING.gs
+ *************************************************/
+
+
+/* =========================================================
+ * CONFIGURATION
+ * ========================================================= */
+
+const HOME_PT_CONFIG = {
+  spreadsheetId:
+    "1bk4ciJDNyjcV00yLPIzIvPyTKDLv9V4YYdZ8w0pDEpA",
+
+  sheetName:
+    "PT Signup",
+
+  spreadsheetUrl:
+    "https://docs.google.com/spreadsheets/d/" +
+    "1bk4ciJDNyjcV00yLPIzIvPyTKDLv9V4YYdZ8w0pDEpA/edit",
+
+  /*
+   * PT source layout:
+   *
+   * Column A — "Who: Therapist"
+   * Column B — weekday / appointment times
+   * Column C — date / appointment name
+   */
+  therapistColumn:
+    1,
+
+  timeColumn:
+    2,
+
+  dateColumn:
+    3,
+
+  appointmentColumn:
+    3,
+
+  /*
+   * Current PT blocks contain six slots.
+   */
+  slotsPerSession:
+    6,
+
+  /*
+   * Maximum rows to scan beneath a session header.
+   * Allows for blank or spacer rows without drifting into
+   * unrelated parts of the workbook.
+   */
+  maxSessionScanRows:
+    15,
+
+  /*
+   * Full Home card searches today plus this many days.
+   */
+  futureSearchDays:
+    45
+};
+
+
+/* =========================================================
+ * SOURCE ACCESS
+ * ========================================================= */
+
+function getHomePTSourceSheet_() {
+  try {
+    const workbook =
+      SpreadsheetApp
+        .openById(
+          HOME_PT_CONFIG.spreadsheetId
+        );
+
+    const sheet =
+      workbook.getSheetByName(
+        HOME_PT_CONFIG.sheetName
+      );
+
+    if (!sheet) {
+      throw new Error(
+        'Could not find "' +
+        HOME_PT_CONFIG.sheetName +
+        '" in the PT workbook.'
+      );
+    }
+
+    return sheet;
+
+  } catch (err) {
+    Logger.log(
+      "Home PT source error: " +
+      String(
+        err &&
+        err.message
+          ? err.message
+          : err
+      )
+    );
+
+    return null;
+  }
+}
+
+
+/* =========================================================
+ * HOME PT CARD
+ *
+ * Displays:
+ * - Today's PT session when one exists
+ * - Otherwise, the next scheduled PT session
+ *
+ * Appointment fields remain directly editable and write
+ * back through the authorized HomeOS edit trigger.
+ * ========================================================= */
+
+function drawHomeV2PTCard_(
+  sh,
+  row,
+  showState
+) {
+  const ptDay =
+    getHomePTDisplaySession_(
+      showState
+    );
+
+  if (
+    !ptDay ||
+    !ptDay.exists
+  ) {
+    return row;
+  }
+
+  const startRow =
+    row;
+
+  const theme =
+    typeof getHomeV2Theme_ ===
+      "function"
+      ? getHomeV2Theme_()
+      : {
+          primaryColor: "#2F5DAA",
+          cardColor: "#FFFFFF",
+          borderColor: "#D8D2C6",
+          mutedText: "#8A857D"
+        };
+
+  const cardTitle =
+    ptDay.isToday
+      ? "PHYSICAL THERAPY TODAY"
+      : "NEXT PHYSICAL THERAPY";
+
+  /*
+   * Main blue title.
+   */
+  row =
+    drawHomeV2CardTitle_(
+      sh,
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.FULL_WIDTH,
+      cardTitle
+    );
+
+  /*
+   * Date and therapist.
+   */
+  const identityParts = [
+    ptDay.dateLabel || "",
+    ptDay.therapist || ""
+  ].filter(Boolean);
+
+  sh.getRange(
+    row,
+    HOME_V2.FULL_COL,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .merge()
+    .setValue(
+      identityParts.join(" • ")
+    )
+    .setBackground(
+      theme.cardColor
+    )
+    .setFontWeight("bold")
+    .setFontSize(14)
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+
+  sh.setRowHeight(
+    row,
+    30
+  );
+
+  row++;
+
+  /*
+   * Filled/open summary.
+   */
+  const statusText =
+    ptDay.filledCount +
+    "/" +
+    ptDay.totalSlots +
+    " Filled" +
+    (
+      ptDay.openCount
+        ? " • " +
+          ptDay.openCount +
+          " Open"
+        : " • Full"
+    );
+
+  sh.getRange(
+    row,
+    HOME_V2.FULL_COL,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .merge()
+    .setValue(
+      statusText
+    )
+    .setBackground(
+      theme.cardColor
+    )
+    .setFontSize(11)
+    .setFontColor(
+      theme.mutedText
+    )
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+
+  sh.setRowHeight(
+    row,
+    24
+  );
+
+  row++;
+
+  /*
+   * Quiet table headings.
+   */
+  const headerBackground =
+    "#F3F5F8";
+
+  sh.getRange(
+    row,
+    1,
+    1,
+    2
+  )
+    .merge()
+    .setValue("TIME")
+    .setBackground(
+      headerBackground
+    )
+    .setFontColor("#555555")
+    .setFontSize(9)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+
+  sh.getRange(
+    row,
+    3,
+    1,
+    7
+  )
+    .merge()
+    .setValue("APPOINTMENT")
+    .setBackground(
+      headerBackground
+    )
+    .setFontColor("#555555")
+    .setFontSize(9)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("middle");
+
+  sh.getRange(
+    row,
+    1,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .setBorder(
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+
+  sh.setRowHeight(
+    row,
+    24
+  );
+
+  row++;
+
+  /*
+   * Find the next upcoming PT slot so it can receive
+   * a very light highlight.
+   */
+  const nextSlotRow =
+    getHomeV2NextPTSlotSourceRow_(
+      ptDay
+    );
+
+  /*
+   * Editable PT slots.
+   */
+  ptDay.slots.forEach(
+    function (slot) {
+      slot =
+        slot || {};
+
+      const appointment =
+        String(
+          slot.appointment || ""
+        ).trim();
+
+      const isNextSlot =
+        Number(
+          slot.sourceRow
+        ) ===
+        Number(
+          nextSlotRow
+        );
+
+      const rowBackground =
+        isNextSlot
+          ? "#FFF8E1"
+          : theme.cardColor;
+
+      /*
+       * Time.
+       */
+      sh.getRange(
+        row,
+        1,
+        1,
+        2
+      )
+        .merge()
+        .setValue(
+          slot.timeText || ""
+        )
+        .setBackground(
+          rowBackground
+        )
+        .setFontSize(11)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+
+      /*
+       * Appointment.
+       *
+       * Empty slots display an em dash, but retain the
+       * PT_SLOT note so the cell remains editable.
+       */
+      const appointmentRange =
+        sh.getRange(
+          row,
+          3,
+          1,
+          7
+        )
+          .merge()
+          .setValue(
+            appointment ||
+            "—"
+          )
+          .setNote(
+            "PT_SLOT:" +
+            slot.sourceRow
+          )
+          .setBackground(
+            rowBackground
+          )
+          .setFontSize(11)
+          .setFontColor(
+            appointment
+              ? "#111111"
+              : theme.mutedText
+          )
+          .setFontStyle(
+            appointment
+              ? "normal"
+              : "italic"
+          )
+          .setHorizontalAlignment("left")
+          .setVerticalAlignment("middle")
+          .setWrap(true);
+
+      appointmentRange
+        .clearDataValidations();
+
+      sh.getRange(
+        row,
+        1,
+        1,
+        HOME_V2.FULL_WIDTH
+      )
+        .setBorder(
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          theme.borderColor,
+          SpreadsheetApp.BorderStyle.SOLID
+        );
+
+      sh.setRowHeight(
+        row,
+        34
+      );
+
+      row++;
+    }
+  );
+
+  /*
+   * Full PT workbook link.
+   */
+  const linkText =
+    "Open Full PT Sign-Up Sheet";
+
+  const richText =
+    SpreadsheetApp
+      .newRichTextValue()
+      .setText(
+        linkText
+      )
+      .setLinkUrl(
+        HOME_PT_CONFIG.spreadsheetUrl
+      )
+      .build();
+
+  sh.getRange(
+    row,
+    1,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .merge()
+    .setRichTextValue(
+      richText
+    )
+    .setBackground(
+      theme.cardColor
+    )
+    .setFontSize(11)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+
+  sh.setRowHeight(
+    row,
+    30
+  );
+
+  row++;
+
+  const usedRows =
+    row -
+    startRow;
+
+  if (
+    typeof styleHomeV2Card_ ===
+    "function"
+  ) {
+    styleHomeV2Card_(
+      sh,
+      startRow,
+      HOME_V2.FULL_COL,
+      usedRows,
+      HOME_V2.FULL_WIDTH
+    );
+  }
+
+  return (
+    row +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+
+/* =========================================================
+ * NEXT PT SLOT
+ *
+ * Returns the source row of the next slot at or after the
+ * current time. Only highlights sessions occurring today.
+ * ========================================================= */
+
+function getHomeV2NextPTSlotSourceRow_(
+  ptDay
+) {
+  ptDay =
+    ptDay || {};
+
+  if (
+    !ptDay.isToday ||
+    !Array.isArray(
+      ptDay.slots
+    )
+  ) {
+    return null;
+  }
+
+  const now =
+    new Date();
+
+  const nowMinutes =
+    now.getHours() * 60 +
+    now.getMinutes();
+
+  const upcoming =
+    ptDay.slots
+      .map(
+        function (slot) {
+          slot =
+            slot || {};
+
+          return {
+            sourceRow:
+              slot.sourceRow,
+
+            minutes:
+              parseHomeV2PTTimeMinutes_(
+                slot.timeText
+              )
+          };
+        }
+      )
+      .filter(
+        function (slot) {
+          return (
+            slot.minutes !==
+              null &&
+            slot.minutes >=
+              nowMinutes
+          );
+        }
+      )
+      .sort(
+        function (a, b) {
+          return (
+            a.minutes -
+            b.minutes
+          );
+        }
+      );
+
+  return upcoming.length
+    ? upcoming[0].sourceRow
+    : null;
+}
+
+
+/* =========================================================
+ * PT TIME PARSER
+ * ========================================================= */
+
+function parseHomeV2PTTimeMinutes_(
+  timeText
+) {
+  const match =
+    String(
+      timeText || ""
+    )
+      .trim()
+      .match(
+        /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i
+      );
+
+  if (!match) {
+    return null;
+  }
+
+  let hour =
+    Number(
+      match[1]
+    );
+
+  const minute =
+    Number(
+      match[2]
+    );
+
+  const ampm =
+    String(
+      match[3]
+    ).toUpperCase();
+
+  if (
+    ampm === "PM" &&
+    hour !== 12
+  ) {
+    hour += 12;
+  }
+
+  if (
+    ampm === "AM" &&
+    hour === 12
+  ) {
+    hour = 0;
+  }
+
+  return (
+    hour * 60 +
+    minute
+  );
+}
+/* =========================================================
+ * DISPLAY SESSION
+ *
+ * Returns:
+ * - Today's session, when one exists.
+ * - Otherwise, the next scheduled session.
+ * ========================================================= */
+
+function getHomePTDisplaySession_(
+  showState
+) {
+  const targetDate =
+    getHomePTTargetDate_(
+      showState
+    );
+
+  if (!targetDate) {
+    return null;
+  }
+
+  const targetDates = [];
+
+  for (
+    let offset = 0;
+    offset <=
+      HOME_PT_CONFIG.futureSearchDays;
+    offset++
+  ) {
+    const date =
+      new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate()
+      );
+
+    date.setDate(
+      date.getDate() +
+      offset
+    );
+
+    targetDates.push(
+      date
+    );
+  }
+
+  const ptMap =
+    getHomePTUpcomingMap_(
+      targetDates
+    );
+
+  const todayKey =
+    homePTDateKey_(
+      targetDate,
+      ""
+    );
+
+  for (
+    let index = 0;
+    index < targetDates.length;
+    index++
+  ) {
+    const dateKey =
+      homePTDateKey_(
+        targetDates[index],
+        ""
+      );
+
+    const session =
+      ptMap[dateKey];
+
+    if (
+      !session ||
+      !session.exists
+    ) {
+      continue;
+    }
+
+    return Object.assign(
+      {},
+      session,
+      {
+        isToday:
+          dateKey ===
+          todayKey,
+
+        dateLabel:
+          formatHomePTDateKey_(
+            dateKey
+          )
+      }
+    );
+  }
+
+  return null;
+}
+
+
+/* =========================================================
+ * BATCH SESSION READER
+ *
+ * Opens the PT workbook once and returns sessions keyed by:
+ *
+ * {
+ *   "2026-07-17": {
+ *     exists: true,
+ *     therapist: "Hana G",
+ *     slots: [...]
+ *   }
+ * }
+ * ========================================================= */
+
+function getHomePTUpcomingMap_(
+  targetDates
+) {
+  const dates =
+    Array.isArray(targetDates)
+      ? targetDates.filter(
+          function (date) {
+            return (
+              date instanceof Date &&
+              !isNaN(
+                date.getTime()
+              )
+            );
+          }
+        )
+      : [];
+
+  if (!dates.length) {
+    return {};
+  }
+
+  const source =
+    getHomePTSourceSheet_();
+
+  if (!source) {
+    return {};
+  }
+
+  const lastRow =
+    source.getLastRow();
+
+  if (lastRow < 1) {
+    return {};
+  }
+
+  const lastColumn =
+    Math.max(
+      source.getLastColumn(),
+      HOME_PT_CONFIG.appointmentColumn
+    );
+
+  const range =
+    source.getRange(
+      1,
+      1,
+      lastRow,
+      lastColumn
+    );
+
+  const values =
+    range.getValues();
+
+  const displayValues =
+    range.getDisplayValues();
+
+  const wantedKeys = {};
+
+  dates.forEach(
+    function (date) {
+      const dateKey =
+        homePTDateKey_(
+          date,
+          ""
+        );
+
+      if (dateKey) {
+        wantedKeys[
+          dateKey
+        ] = true;
+      }
+    }
+  );
+
+  const output = {};
+
+  for (
+    let headerIndex = 0;
+    headerIndex <
+      values.length;
+    headerIndex++
+  ) {
+    const rawDate =
+      values[
+        headerIndex
+      ][
+        HOME_PT_CONFIG
+          .dateColumn -
+        1
+      ];
+
+    const displayDate =
+      displayValues[
+        headerIndex
+      ][
+        HOME_PT_CONFIG
+          .dateColumn -
+        1
+      ];
+
+    const dateKey =
+      homePTDateKey_(
+        rawDate,
+        displayDate
+      );
+
+    if (
+      !dateKey ||
+      !wantedKeys[
+        dateKey
+      ]
+    ) {
+      continue;
+    }
+
+    const therapist =
+      String(
+        displayValues[
+          headerIndex
+        ][
+          HOME_PT_CONFIG
+            .therapistColumn -
+          1
+        ] || ""
+      )
+        .replace(
+          /^Who:\s*/i,
+          ""
+        )
+        .trim();
+
+    const slots = [];
+
+    /*
+     * Scan enough rows to tolerate spacing, but collect
+     * only the six valid appointment-time rows.
+     */
+    const maxScanIndex =
+      Math.min(
+        values.length,
+        headerIndex +
+        HOME_PT_CONFIG
+          .maxSessionScanRows +
+        1
+      );
+
+    for (
+      let rowIndex =
+        headerIndex + 1;
+
+      rowIndex <
+        maxScanIndex;
+
+      rowIndex++
+    ) {
+      const nextTherapistHeader =
+        String(
+          displayValues[
+            rowIndex
+          ][
+            HOME_PT_CONFIG
+              .therapistColumn -
+            1
+          ] || ""
+        ).trim();
+
+      /*
+       * Stop when the next PT block begins.
+       */
+      if (
+        /^Who:\s*/i.test(
+          nextTherapistHeader
+        )
+      ) {
+        break;
+      }
+
+      const timeText =
+        String(
+          displayValues[
+            rowIndex
+          ][
+            HOME_PT_CONFIG
+              .timeColumn -
+            1
+          ] || ""
+        ).trim();
+
+      /*
+       * Ignore spacer rows.
+       */
+      if (
+        !timeText ||
+        !isHomePTTimeText_(
+          timeText
+        )
+      ) {
+        continue;
+      }
+
+      const appointment =
+        String(
+          displayValues[
+            rowIndex
+          ][
+            HOME_PT_CONFIG
+              .appointmentColumn -
+            1
+          ] || ""
+        ).trim();
+
+      slots.push({
+        sourceRow:
+          rowIndex + 1,
+
+        timeText:
+          normalizeHomePTTimeText_(
+            timeText
+          ),
+
+        appointment:
+          appointment
+      });
+
+      if (
+        slots.length >=
+        HOME_PT_CONFIG
+          .slotsPerSession
+      ) {
+        break;
+      }
+    }
+
+    if (!slots.length) {
+      continue;
+    }
+
+    const filledCount =
+      slots.filter(
+        function (slot) {
+          return Boolean(
+            String(
+              slot.appointment ||
+              ""
+            ).trim()
+          );
+        }
+      ).length;
+
+    output[
+      dateKey
+    ] = {
+      exists:
+        true,
+
+      dateKey:
+        dateKey,
+
+      therapist:
+        therapist,
+
+      slots:
+        slots,
+
+      totalSlots:
+        slots.length,
+
+      filledCount:
+        filledCount,
+
+      openCount:
+        slots.length -
+        filledCount
+    };
+  }
+
+  return output;
+}
+
+
+/* =========================================================
+ * COMPACT UPCOMING PT ITEM
+ *
+ * Used by:
+ * 06g HOME UPCOMING.gs
+ * ========================================================= */
+
+function buildHomeUpcomingPTItem_(
+  ptDay
+) {
+  if (
+    !ptDay ||
+    !ptDay.exists
+  ) {
+    return null;
+  }
+
+  const total =
+    Number(
+      ptDay.totalSlots || 0
+    );
+
+  const filled =
+    Number(
+      ptDay.filledCount || 0
+    );
+
+  const open =
+    Number(
+      ptDay.openCount || 0
+    );
+
+  let statusText = "";
+
+  if (
+    total > 0 &&
+    filled === total
+  ) {
+    statusText =
+      "Full (" +
+      filled +
+      "/" +
+      total +
+      ")";
+  } else {
+    statusText =
+      filled +
+      "/" +
+      total +
+      " Filled";
+
+    if (open > 0) {
+      statusText +=
+        " • " +
+        open +
+        " Open";
+    }
+  }
+
+  const therapist =
+    String(
+      ptDay.therapist || ""
+    ).trim();
+
+  const detail =
+    [
+      therapist,
+      statusText
+    ]
+      .filter(Boolean)
+      .join(" • ");
+
+  return {
+    type:
+      "pt",
+
+    label:
+      "PT",
+
+    detail:
+      detail,
+
+    summary:
+      detail,
+
+    dateKey:
+      ptDay.dateKey,
+
+    slots:
+      ptDay.slots || []
+  };
+}
+
+
+/* =========================================================
+ * TARGET DATE
+ *
+ * Resolves the date currently driving HomeOS.
+ * ========================================================= */
+
+function getHomePTTargetDate_(
+  showState
+) {
+  showState =
+    showState || {};
+
+  const possibleValues = [
+    showState.target &&
+      showState.target.date,
+
+    showState.date,
+
+    showState.prettyDate
+  ];
+
+  for (
+    let index = 0;
+    index <
+      possibleValues.length;
+    index++
+  ) {
+    const value =
+      possibleValues[
+        index
+      ];
+
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      continue;
+    }
+
+    const parsed =
+      parseHomePTDate_(
+        value,
+        value
+      );
+
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  /*
+   * Final fallback to IN/OUT!A3.
+   */
+  const inOut =
+    SpreadsheetApp
+      .getActiveSpreadsheet()
+      .getSheetByName(
+        "IN/OUT"
+      );
+
+  if (!inOut) {
+    return null;
+  }
+
+  const rawDate =
+    inOut
+      .getRange("A3")
+      .getValue();
+
+  const displayDate =
+    inOut
+      .getRange("A3")
+      .getDisplayValue();
+
+  return parseHomePTDate_(
+    rawDate,
+    displayDate
+  );
+}
+
+
+/* =========================================================
+ * DATE PARSER
+ *
+ * Accepts:
+ * - Date objects
+ * - M/D/YY
+ * - M/D/YYYY
+ * - Readable strings such as "Friday, July 17"
+ * ========================================================= */
+
+function parseHomePTDate_(
+  rawValue,
+  displayValue
+) {
+  if (
+    rawValue instanceof Date &&
+    !isNaN(
+      rawValue.getTime()
+    )
+  ) {
+    return new Date(
+      rawValue.getFullYear(),
+      rawValue.getMonth(),
+      rawValue.getDate()
+    );
+  }
+
+  const text =
+    String(
+      displayValue ||
+      rawValue ||
+      ""
+    ).trim();
+
+  if (!text) {
+    return null;
+  }
+
+  const numericMatch =
+    text.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/
+    );
+
+  if (numericMatch) {
+    const month =
+      Number(
+        numericMatch[1]
+      );
+
+    const day =
+      Number(
+        numericMatch[2]
+      );
+
+    let year =
+      Number(
+        numericMatch[3]
+      );
+
+    if (year < 100) {
+      year += 2000;
+    }
+
+    const date =
+      new Date(
+        year,
+        month - 1,
+        day
+      );
+
+    /*
+     * Reject rollover dates such as February 31.
+     */
+    if (
+      date.getFullYear() !==
+        year ||
+      date.getMonth() !==
+        month - 1 ||
+      date.getDate() !==
+        day
+    ) {
+      return null;
+    }
+
+    return date;
+  }
+
+  let readableText =
+    text;
+
+  /*
+   * ShowState may provide "Friday, July 17" without a year.
+   */
+  if (
+    !/\b\d{4}\b/.test(
+      readableText
+    )
+  ) {
+    readableText +=
+      ", " +
+      new Date()
+        .getFullYear();
+  }
+
+  const parsed =
+    new Date(
+      readableText
+    );
+
+  if (
+    isNaN(
+      parsed.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return new Date(
+    parsed.getFullYear(),
+    parsed.getMonth(),
+    parsed.getDate()
+  );
+}
+
+
+/* =========================================================
+ * CANONICAL DATE KEY
+ *
+ * Avoids external-workbook timezone shifts.
+ * ========================================================= */
+
+function homePTDateKey_(
+  rawValue,
+  displayValue
+) {
+  const displayText =
+    String(
+      displayValue || ""
+    ).trim();
+
+  /*
+   * Prefer the displayed date from the external workbook.
+   */
+  const displayMatch =
+    displayText.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/
+    );
+
+  if (displayMatch) {
+    let year =
+      Number(
+        displayMatch[3]
+      );
+
+    if (year < 100) {
+      year += 2000;
+    }
+
+    return [
+      year,
+
+      String(
+        Number(
+          displayMatch[1]
+        )
+      ).padStart(
+        2,
+        "0"
+      ),
+
+      String(
+        Number(
+          displayMatch[2]
+        )
+      ).padStart(
+        2,
+        "0"
+      )
+    ].join("-");
+  }
+
+  if (
+    rawValue instanceof Date &&
+    !isNaN(
+      rawValue.getTime()
+    )
+  ) {
+    return [
+      rawValue.getFullYear(),
+
+      String(
+        rawValue.getMonth() +
+        1
+      ).padStart(
+        2,
+        "0"
+      ),
+
+      String(
+        rawValue.getDate()
+      ).padStart(
+        2,
+        "0"
+      )
+    ].join("-");
+  }
+
+  const parsed =
+    parseHomePTDate_(
+      rawValue,
+      displayValue
+    );
+
+  if (!parsed) {
+    return "";
+  }
+
+  return [
+    parsed.getFullYear(),
+
+    String(
+      parsed.getMonth() +
+      1
+    ).padStart(
+      2,
+      "0"
+    ),
+
+    String(
+      parsed.getDate()
+    ).padStart(
+      2,
+      "0"
+    )
+  ].join("-");
+}
+
+
+/* =========================================================
+ * DISPLAY DATE LABEL
+ * ========================================================= */
+
+function formatHomePTDateKey_(
+  dateKey
+) {
+  const match =
+    String(
+      dateKey || ""
+    ).match(
+      /^(\d{4})-(\d{2})-(\d{2})$/
+    );
+
+  if (!match) {
+    return String(
+      dateKey || ""
+    );
+  }
+
+  const date =
+    new Date(
+      Number(
+        match[1]
+      ),
+
+      Number(
+        match[2]
+      ) - 1,
+
+      Number(
+        match[3]
+      )
+    );
+
+  return Utilities
+    .formatDate(
+      date,
+      Session
+        .getScriptTimeZone(),
+      "EEEE, MMMM d"
+    );
+}
+
+
+/* =========================================================
+ * TIME HELPERS
+ * ========================================================= */
+
+function isHomePTTimeText_(
+  value
+) {
+  return /^(\d{1,2})(?::(\d{2}))?\s*(a|p|am|pm)$/i
+    .test(
+      String(
+        value || ""
+      )
+        .replace(
+          /\./g,
+          ""
+        )
+        .trim()
+    );
+}
+
+
+function normalizeHomePTTimeText_(
+  value
+) {
+  const text =
+    String(
+      value || ""
+    )
+      .replace(
+        /\./g,
+        ""
+      )
+      .trim()
+      .toUpperCase();
+
+  const match =
+    text.match(
+      /^(\d{1,2})(?::(\d{2}))?\s*(A|P|AM|PM)$/
+    );
+
+  if (!match) {
+    return text;
+  }
+
+  const hour =
+    match[1];
+
+  const minute =
+    match[2] ||
+    "00";
+
+  const suffix =
+    match[3]
+      .charAt(0) ===
+      "A"
+      ? "AM"
+      : "PM";
+
+  return (
+    hour +
+    ":" +
+    minute +
+    " " +
+    suffix
+  );
+}
+
+
+/* =========================================================
+ * EDITABLE SLOT WRITE-BACK
+ *
+ * Runs through homeOSInstallableOnEdit_().
+ * ========================================================= */
+
+function homeOSHandlePTSlotEdit_(
+  range,
+  note
+) {
+  const sourceRow =
+    Number(
+      String(
+        note || ""
+      )
+        .replace(
+          "PT_SLOT:",
+          ""
+        )
+        .trim()
+    );
+
+  if (!sourceRow) {
+    throw new Error(
+      "The PT source row could not be read."
+    );
+  }
+
+  const source =
+    getHomePTSourceSheet_();
+
+  if (!source) {
+    throw new Error(
+      "The PT workbook could not be opened."
+    );
+  }
+
+  const appointment =
+    String(
+      range
+        .getDisplayValue() ||
+      ""
+    ).trim();
+
+  source
+    .getRange(
+      sourceRow,
+      HOME_PT_CONFIG
+        .appointmentColumn
+    )
+    .setValue(
+      appointment
+    );
+
+  return {
+    updated:
+      true,
+
+    sourceRow:
+      sourceRow,
+
+    appointment:
+      appointment
+  };
+}
+
+
+/* =========================================================
+ * TESTS
+ * ========================================================= */
+
+function testHomePTDataLayer() {
+  const targetDate =
+    getHomePTTargetDate_(
+      {}
+    );
+
+  if (!targetDate) {
+    throw new Error(
+      "Could not determine the Home PT target date."
+    );
+  }
+
+  const dates = [];
+
+  for (
+    let offset = 0;
+    offset <= 14;
+    offset++
+  ) {
+    const date =
+      new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate()
+      );
+
+    date.setDate(
+      date.getDate() +
+      offset
+    );
+
+    dates.push(
+      date
+    );
+  }
+
+  const sessions =
+    getHomePTUpcomingMap_(
+      dates
+    );
+
+  const result = {
+    targetDate:
+      homePTDateKey_(
+        targetDate,
+        ""
+      ),
+
+    sessionsFound:
+      Object.keys(
+        sessions
+      ).length,
+
+    sessions:
+      sessions
+  };
+
+  Logger.log(
+    "HOME PT DATA-LAYER TEST"
+  );
+
+  Logger.log(
+    JSON.stringify(
+      result,
+      null,
+      2
+    )
+  );
+
+  SpreadsheetApp
+    .getUi()
+    .alert(
+      "Home PT data-layer test complete.\n\n" +
+      "Sessions found: " +
+      result.sessionsFound
+    );
+
+  return result;
+}
+
+
+function testHomePTDisplaySession() {
+  const showState =
+    typeof ShowStateOS ===
+      "function"
+      ? ShowStateOS()
+          .current()
+      : (
+          typeof buildShowState ===
+            "function"
+            ? buildShowState()
+            : {}
+        );
+
+  const result =
+    getHomePTDisplaySession_(
+      showState || {}
+    );
+
+  Logger.log(
+    "HOME PT DISPLAY SESSION TEST"
+  );
+
+  Logger.log(
+    JSON.stringify(
+      result,
+      null,
+      2
+    )
+  );
+
+  SpreadsheetApp
+    .getUi()
+    .alert(
+      result &&
+      result.exists
+        ? (
+            "PT session found.\n\n" +
+            "Date: " +
+            result.dateLabel +
+            "\n" +
+            "Therapist: " +
+            (
+              result.therapist ||
+              "Not listed"
+            ) +
+            "\n" +
+            "Slots: " +
+            result.totalSlots +
+            "\n" +
+            "Filled: " +
+            result.filledCount +
+            "\n" +
+            "Open: " +
+            result.openCount
+          )
+        : "No upcoming PT session was found."
+    );
+
+  return result;
+}

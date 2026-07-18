@@ -1,0 +1,76 @@
+/*************************************************
+ * 10 HOMEOS - CONTEXT
+ * Version: 2.0.0
+ *************************************************/
+
+function buildHomeContext_() {
+  clearHomeContext_();
+``
+  const showState = buildShowState();
+  let timeline = buildTimelineOS(showState);
+
+  timeline = sanitizeHomeTimeline_(timeline, showState);
+
+  return {
+    system: "StageOS Home",
+    version: "2.0.0",
+    refreshedAt: new Date(),
+
+    showState,
+    timeline,
+
+    date: showState.date,
+    prettyDate: showState.prettyDate,
+    weeklyName: showState.weeklyName,
+    performances: showState.performances || [],
+    currentCastOuts: showState.currentCastOuts || [],
+    notes: showState.notes || []
+  };
+}
+
+function sanitizeHomeTimeline_(timeline, showState) {
+  timeline = timeline || {};
+  showState = showState || {};
+
+  const rawEvents = Array.isArray(timeline.events)
+    ? timeline.events
+    : Array.isArray(timeline.displayEvents)
+      ? timeline.displayEvents
+      : [];
+
+  const cleanEvents = rawEvents.filter(function(event) {
+    event = event || {};
+    return event.source !== "DecisionOS";
+  });
+
+  return {
+    source: "ShowState",
+    date: showState.prettyDate || showState.date || timeline.date || "",
+    events: cleanEvents,
+    displayEvents: cleanEvents.filter(function(event) {
+      return event.displayOnDashboard !== false;
+    })
+  };
+}
+
+function clearHomeContext_() {
+  try {
+    CacheService.getScriptCache().remove("STAGEOS_HOME_CONTEXT");
+  } catch (err) {}
+
+  try {
+    CacheService.getDocumentCache().remove("STAGEOS_HOME_CONTEXT");
+  } catch (err) {}
+}
+
+function testHomeContext_DEV() {
+  const ctx = buildHomeContext_();
+
+  Logger.log("HOME CONTEXT TEST");
+  Logger.log("prettyDate: " + ctx.prettyDate);
+  Logger.log("weeklyName: " + ctx.weeklyName);
+  Logger.log("performances: " + JSON.stringify(ctx.performances));
+  Logger.log("timeline: " + JSON.stringify(ctx.timeline));
+
+  return ctx;
+}

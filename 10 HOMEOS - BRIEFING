@@ -1,0 +1,154 @@
+/*************************************************
+ * 10 HOMEOS - BRIEFING
+ * Version: 1.0.0
+ *
+ * Daily briefing powered by DecisionOS + TimelineOS.
+ *************************************************/
+
+function drawStatusCard_(sh, row, showState, timeline) {
+  row = drawCardTitle_(sh, row, "DAILY BRIEFING");
+
+  timeline = timeline || {};
+  const phase = getMissionControlPhase_(timeline);
+  const current = timeline.currentEvent || {};
+  const next = getMissionNextTimelineEvent_(timeline);
+
+  const briefing = [
+    {
+      label: "Status",
+      value: buildMissionStatusSentence_(phase, current, next)
+    },
+    {
+      label: "Today",
+      value: buildMissionTodaySummaryFromShowState_(showState)
+    },
+    {
+      label: "Next Step",
+      value: getMissionNextStepFromShowState_(showState, phase)
+    }
+  ];
+
+  briefing.forEach(item => {
+    sh.getRange(row, 1, 1, 2)
+      .merge()
+      .setValue(item.label)
+      .setFontWeight("bold");
+
+    sh.getRange(row, 3, 1, 7)
+      .merge()
+      .setValue(item.value)
+      .setFontSize(13);
+
+    sh.setRowHeight(row, String(item.value || "").includes("\n") ? 56 : 36);
+    row++;
+  });
+
+  return row + 1;
+}
+
+function buildMissionTodaySummaryFromShowState_(showState) {
+  showState = showState || {};
+
+  const parts = [];
+
+  const performances = showState.performances || [];
+  if (performances.length) {
+    parts.push(performances.map(formatHomePerformanceLabel_).join("\n"));
+  }
+
+  const conductor = getHomeConductorFromShowState_(showState);
+  if (conductor) {
+    parts.push("Conductor: " + conductor);
+  }
+
+  const castOuts = showState.currentCastOuts || [];
+  if (castOuts.length) {
+    parts.push(
+      castOuts.length +
+      " cast out" +
+      (castOuts.length === 1 ? "" : "s")
+    );
+  }
+
+  const guest = getHomeGuestSpellerFromShowState_(showState);
+  if (guest) {
+    parts.push("Guest Speller: " + guest);
+  }
+
+  return parts.length ? parts.join("\n") : "No major items flagged.";
+}
+
+function getMissionNextStepFromShowState_(showState, phase) {
+  const insertLines = getDashboardInsertReminderLines_(showState);
+
+  if (insertLines.length) {
+    return "Send IN/OUT changes to FOH.";
+  }
+
+  if (getHomeGuestSpellerFromShowState_(showState)) {
+    return "Confirm Guest Speller packet and report note.";
+  }
+
+  switch (phase) {
+    case "PREP":
+      return "Prep IN/OUT and reset the report shell.";
+    case "CREW_CALL":
+      return "Confirm crew is ready and review the call timeline.";
+    case "HAIR_CALL":
+      return "Check hair room timing.";
+    case "HALF_HOUR":
+      return "Confirm house open and prepare for places.";
+    case "PERFORMANCE":
+      return "Track report notes.";
+    default:
+      return "Review Home.";
+  }
+}
+
+function getHomeConductorFromShowState_(showState) {
+  const performances = showState.performances || [];
+  const first = performances[0] || {};
+  return first.conductor || showState.conductor || "";
+}
+
+function getHomeGuestSpellerFromShowState_(showState) {
+  const performances = showState.performances || [];
+  const first = performances[0] || {};
+  return first.guestSpeller || showState.guestSpeller || "";
+}
+
+function buildMissionStatusSentence_(phase, current, next) {
+  const currentTitle = current && current.title ? current.title : "";
+  const nextText = next && next.title
+    ? "\nNext: " + next.title + (next.timeText ? " at " + next.timeText : "")
+    : "";
+
+  switch (phase) {
+    case "PREP":
+      return "Pre-show preparation is underway." + nextText;
+    case "CREW_CALL":
+      return "Crew call is underway." + nextText;
+    case "HAIR_CALL":
+      return "Hair call is underway." + nextText;
+    case "HALF_HOUR":
+      return "Half Hour / House Open is underway." + nextText;
+    case "PERFORMANCE":
+      return "Performance is in progress." + nextText;
+    default:
+      return currentTitle || "Review today’s schedule.";
+  }
+}
+
+function getMissionNextTimelineEvent_(timeline) {
+  const events = timeline.displayEvents || timeline.events || [];
+  const current = timeline.currentEvent;
+
+  if (!current || !current.time) return events[0] || null;
+
+  const currentTime = new Date(current.time).getTime();
+
+  return events.find(event => {
+    if (!event.time) return false;
+    return new Date(event.time).getTime() > currentTime;
+  }) || null;
+}

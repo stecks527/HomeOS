@@ -1,0 +1,112 @@
+/*************************************************
+ * 10 HOMEOS - HELPERS
+ * Version: 2.1.0
+ *************************************************/
+
+function getDashboardInsertReminderLines_(showState) {
+  const castOuts = showState.currentCastOuts || [];
+
+  return castOuts
+    .filter(function(item) {
+      const role = String(item.role || "").toLowerCase();
+      const out = String(item.out || "").trim();
+
+      if (!out) return false;
+
+      return !(
+        role.includes("swing") ||
+        role.includes("understudy") ||
+        role.includes("u/s") ||
+        role.includes("standby")
+      );
+    })
+    .map(function(item) {
+      const role = item.role || "Role";
+      const inn = item.in || "Cover TBD";
+      return role + " = " + inn;
+    });
+}
+
+function handleMissionControlEdit_(e) {
+  try {
+    if (!e || !e.range) return;
+
+    const range = e.range;
+    const sh = range.getSheet();
+
+    if (!sh || sh.getName() !== "Home") return;
+
+    const note = String(range.getNote() || "").trim();
+    if (!note) return;
+
+    /*
+     * Simple onEdit can safely handle these because they do not
+     * need to open dialogs.
+     */
+    if (note.indexOf("WORKFLOW_TASK:") === 0) {
+      homeOSHandleWorkflowTaskEdit_(range, note);
+      return;
+    }
+
+    if (note.indexOf("LONG_TERM_TASK_ROW:") === 0) {
+      homeOSHandleLongTermTaskEdit_(range, note);
+      return;
+    }
+
+    /*
+     * MISSION_ACTION is intentionally ignored here.
+     * Those actions are handled by the authorized installable trigger.
+     */
+  } catch (err) {
+    Logger.log(
+      "Home simple edit handler failed: " +
+      String(err && err.message ? err.message : err)
+    );
+  }
+}
+
+function getHomeV2PTSignUpLink_() {
+  if (typeof getPTSignUpLink_ === "function") {
+    const link = getPTSignUpLink_();
+    if (link) return link;
+  }
+
+  const possibleKeys = [
+    "PT Sign-Up Link",
+    "PT Sign Up Link",
+    "PT Signup Link",
+    "Physical Therapy Sign-Up Link"
+  ];
+
+  for (let i = 0; i < possibleKeys.length; i++) {
+    const value = getHomeV2Setting_(possibleKeys[i], "");
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function updateHomeTaskStylesOnly_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName("Home");
+  if (!sh) return;
+
+  const range = sh.getDataRange();
+  const notes = range.getNotes();
+  const values = range.getValues();
+
+  for (let r = 0; r < notes.length; r++) {
+    for (let c = 0; c < notes[r].length; c++) {
+      const note = String(notes[r][c] || "");
+      if (!note.startsWith("WORKFLOW_TASK:")) continue;
+
+      const done = values[r][c] === true;
+      const row = r + 1;
+      const col = c + 1;
+
+      sh.getRange(row, col + 1, 1, 2)
+        .setFontColor(done ? "#888888" : "#111111")
+        .setFontLine(done ? "line-through" : "none");
+    }
+  }
+}

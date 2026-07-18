@@ -1,0 +1,525 @@
+/*************************************************
+ * 10 HOMEOS - API
+ * Version: 4.0.0
+ * Status: ACTIVE
+ *
+ * Canonical public API for Home / Mission Control.
+ *************************************************/
+
+function HomeOS() {
+  return {
+    /*************************************************
+     * UI
+     *************************************************/
+
+    open: function () {
+      return homeOSRefresh_();
+    },
+
+    /*************************************************
+     * STATE
+     *************************************************/
+
+    current: function () {
+      return homeOSGetCurrentState_();
+    },
+
+    get: function () {
+      return homeOSGetCurrentState_();
+    },
+
+    /*************************************************
+     * REFRESH
+     *************************************************/
+
+    refresh: function () {
+      return homeOSRefresh_();
+    },
+
+    /*************************************************
+     * CACHE
+     *************************************************/
+
+    clearCache: function () {
+      return homeOSClearCaches_();
+    },
+
+    clearAllCaches: function () {
+      return homeOSClearAllCaches_();
+    },
+
+    /*************************************************
+     * HEALTH
+     *************************************************/
+
+    status: function () {
+      return homeOSStatus_();
+    },
+
+    test: function () {
+      return testHomeOSPlatformAPI();
+    }
+  };
+}
+
+/*************************************************
+ * CANONICAL REFRESH
+ *************************************************/
+
+function homeOSRefresh_() {
+  return refreshStageOSDashboard_HOMEV2();
+}
+
+function refreshHome() {
+  return HomeOS().refresh();
+}
+
+function refreshStageOSHome() {
+  return HomeOS().refresh();
+}
+
+function testHomeOSRefresh() {
+  return HomeOS().refresh();
+}
+
+/*************************************************
+ * LEGACY / DEV ALIASES
+ * Keep these only as safe redirects.
+ *************************************************/
+
+function refreshStageOSDashboard_DEV() {
+  return HomeOS().refresh();
+}
+
+function refreshStageOSDashboard_LEGACY_DO_NOT_USE() {
+  return HomeOS().refresh();
+}
+
+/*************************************************
+ * HOMEOS CURRENT STATE
+ *************************************************/
+
+function homeOSGetCurrentState_() {
+  if (
+    typeof buildHomeContext_ ===
+    "function"
+  ) {
+    return buildHomeContext_();
+  }
+
+  if (
+    typeof ShowStateOS ===
+    "function"
+  ) {
+    const showState =
+      ShowStateOS().current();
+
+    return {
+      system:
+        "StageOS Home",
+
+      version:
+        "4.0.0",
+
+      showState:
+        showState,
+
+      date:
+        showState
+          ? (
+              showState.prettyDate ||
+              showState.date ||
+              ""
+            )
+          : "",
+
+      performances:
+        showState &&
+        Array.isArray(
+          showState.performances
+        )
+          ? showState.performances
+          : [],
+
+      timeline:
+        null
+    };
+  }
+
+  throw new Error(
+    "HomeOS could not find buildHomeContext_() or ShowStateOS()."
+  );
+}
+
+
+/*************************************************
+ * HOMEOS CACHE CONTROL
+ *************************************************/
+
+function homeOSClearCaches_() {
+  /*
+   * Clear the active Home context caches.
+   */
+  if (
+    typeof clearHomeContext_ ===
+    "function"
+  ) {
+    clearHomeContext_();
+  }
+
+  if (
+    typeof clearHomeTaskContextCache_ ===
+    "function"
+  ) {
+    clearHomeTaskContextCache_();
+  }
+
+  if (
+    typeof HOME_CURRENT_CONTEXT_ !==
+    "undefined"
+  ) {
+    HOME_CURRENT_CONTEXT_ =
+      null;
+  }
+
+  if (
+    typeof HOME_TASK_CONTEXT_CACHE_ !==
+    "undefined"
+  ) {
+    HOME_TASK_CONTEXT_CACHE_ =
+      null;
+  }
+
+  if (
+    typeof HOME_WORKFLOW_STATUS_CACHE_ !==
+    "undefined"
+  ) {
+    HOME_WORKFLOW_STATUS_CACHE_ =
+      null;
+  }
+
+  return true;
+}
+
+
+function homeOSClearAllCaches_() {
+  homeOSClearCaches_();
+
+  /*
+   * Home is driven by ShowStateOS, so a complete Home
+   * refresh may also clear its short-lived state cache.
+   */
+  if (
+    typeof ShowStateOS ===
+    "function"
+  ) {
+    ShowStateOS().clearCache();
+  } else if (
+    typeof clearShowStateOSCache ===
+    "function"
+  ) {
+    clearShowStateOSCache();
+  }
+
+  return true;
+}
+
+
+/*************************************************
+ * HOMEOS STATUS
+ *************************************************/
+
+function homeOSStatus_() {
+  const startedAt =
+    Date.now();
+
+  let context = null;
+  let error = "";
+
+  try {
+    context =
+      homeOSGetCurrentState_();
+  } catch (err) {
+    error =
+      String(
+        err && err.message
+          ? err.message
+          : err
+      );
+  }
+
+  const showState =
+    context &&
+    context.showState
+      ? context.showState
+      : {};
+
+  const performances =
+    context &&
+    Array.isArray(
+      context.performances
+    )
+      ? context.performances
+      : (
+          Array.isArray(
+            showState.performances
+          )
+            ? showState.performances
+            : []
+        );
+
+  const timeline =
+    context &&
+    context.timeline
+      ? context.timeline
+      : {};
+
+  const timelineEvents =
+    Array.isArray(
+      timeline.displayEvents
+    )
+      ? timeline.displayEvents
+      : (
+          Array.isArray(
+            timeline.events
+          )
+            ? timeline.events
+            : []
+        );
+
+  const currentCastOuts =
+    context &&
+    Array.isArray(
+      context.currentCastOuts
+    )
+      ? context.currentCastOuts
+      : (
+          Array.isArray(
+            showState.currentCastOuts
+          )
+            ? showState.currentCastOuts
+            : []
+        );
+
+  return {
+    system:
+      "HomeOS",
+
+    version:
+      "4.0.0",
+
+    available:
+      Boolean(context),
+
+    healthy:
+      Boolean(
+        context &&
+        (
+          context.date ||
+          context.prettyDate ||
+          showState.date
+        )
+      ),
+
+    error:
+      error,
+
+    date:
+      context
+        ? (
+            context.prettyDate ||
+            context.date ||
+            showState.prettyDate ||
+            showState.date ||
+            ""
+          )
+        : "",
+
+    weeklyName:
+      context
+        ? (
+            context.weeklyName ||
+            showState.weeklyName ||
+            ""
+          )
+        : "",
+
+    performances:
+      performances.length,
+
+    timelineEvents:
+      timelineEvents.length,
+
+    currentCastOuts:
+      currentCastOuts.length,
+
+    buildDurationMs:
+      Date.now() -
+      startedAt,
+
+    rendererAvailable:
+      typeof refreshStageOSDashboard_HOMEV2 ===
+      "function",
+
+    contextBuilderAvailable:
+      typeof buildHomeContext_ ===
+      "function",
+
+    showStateAvailable:
+      typeof ShowStateOS ===
+        "function" ||
+      typeof buildShowState ===
+        "function",
+
+    timelineAvailable:
+      typeof buildTimelineOS ===
+      "function",
+
+    taskStateAvailable:
+      typeof getHomeTaskContext_ ===
+      "function",
+
+    workflowStatusAvailable:
+      typeof WorkflowStatusOS ===
+      "function"
+  };
+}
+
+
+/*************************************************
+ * HOMEOS PLATFORM API TEST
+ *************************************************/
+
+function testHomeOSPlatformAPI() {
+  const os =
+    HomeOS();
+
+  const requiredMethods = [
+    "open",
+    "current",
+    "get",
+    "refresh",
+    "clearCache",
+    "clearAllCaches",
+    "status",
+    "test"
+  ];
+
+  const missingMethods =
+    requiredMethods.filter(
+      function (methodName) {
+        return (
+          typeof os[methodName] !==
+          "function"
+        );
+      }
+    );
+
+  /*
+   * Read the Home context only.
+   * Do not redraw the Home sheet during this test.
+   */
+  const current =
+    os.current();
+
+  const status =
+    os.status();
+
+  const result = {
+    healthy:
+      status.healthy &&
+      missingMethods.length === 0,
+
+    methodsChecked:
+      requiredMethods.length,
+
+    missingMethods:
+      missingMethods,
+
+    date:
+      status.date,
+
+    weeklyName:
+      status.weeklyName,
+
+    performances:
+      status.performances,
+
+    timelineEvents:
+      status.timelineEvents,
+
+    currentCastOuts:
+      status.currentCastOuts,
+
+    buildDurationMs:
+      status.buildDurationMs,
+
+    currentAvailable:
+      Boolean(current),
+
+    rendererAvailable:
+      status.rendererAvailable,
+
+    contextBuilderAvailable:
+      status.contextBuilderAvailable,
+
+    showStateAvailable:
+      status.showStateAvailable,
+
+    timelineAvailable:
+      status.timelineAvailable,
+
+    taskStateAvailable:
+      status.taskStateAvailable,
+
+    workflowStatusAvailable:
+      status.workflowStatusAvailable
+  };
+
+  Logger.log(
+    "HOMEOS PLATFORM API TEST"
+  );
+
+  Logger.log(
+    JSON.stringify(
+      result,
+      null,
+      2
+    )
+  );
+
+  SpreadsheetApp
+    .getUi()
+    .alert(
+      "HomeOS platform API test " +
+      (
+        result.healthy
+          ? "passed."
+          : "found issues."
+      ) +
+      "\n\n" +
+      "Methods checked: " +
+      result.methodsChecked +
+      "\n" +
+      "Missing methods: " +
+      result.missingMethods.length +
+      "\n" +
+      "Date: " +
+      result.date +
+      "\n" +
+      "Performances: " +
+      result.performances +
+      "\n" +
+      "Timeline events: " +
+      result.timelineEvents +
+      "\n" +
+      "Current cast outs: " +
+      result.currentCastOuts +
+      "\n\n" +
+      "Build duration: " +
+      result.buildDurationMs +
+      " ms"
+    );
+
+  return result;
+}

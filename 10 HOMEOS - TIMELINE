@@ -1,0 +1,463 @@
+/*************************************************
+ * 10 HOMEOS - TIMELINE
+ * Version: 1.0.0
+ *
+ * Draws the right-side timeline for one Home event block.
+ * EventBlockOS has already decided which entries belong here.
+ *************************************************/
+
+function drawHomeV3TimelineBlock_(
+  sh,
+  startRow,
+  blockRows,
+  events
+) {
+  events = events || [];
+
+  const theme =
+    getHomeV2Theme_();
+
+  const now =
+    getHomeV3NowForTimeline_();
+
+  drawHomeV3TimelineHeader_(
+    sh,
+    startRow
+  );
+
+  let row =
+    startRow + 1;
+
+  const endRowExclusive =
+    startRow + blockRows;
+
+  events
+    .slice(
+      0,
+      Math.max(
+        blockRows - 1,
+        0
+      )
+    )
+    .forEach(function (event) {
+      const state =
+        getHomeV3TimelineState_(
+          events,
+          event,
+          now
+        );
+
+      sh.getRange(
+        row,
+        HOME_V2.RIGHT_COL,
+        1,
+        HOME_V2.RIGHT_WIDTH
+      )
+        .setBackground(state.background)
+        .setFontFamily(HOME_V2.FONT)
+        .setFontColor(state.fontColor)
+        .setFontWeight(
+          state.isCurrent
+            ? "bold"
+            : "normal"
+        );
+
+      sh.getRange(
+        row,
+        HOME_V2.RIGHT_COL
+      )
+        .setValue(
+          event.timeText || ""
+        )
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+
+      const titleRange =
+        sh.getRange(
+          row,
+          HOME_V2.RIGHT_COL + 1,
+          1,
+          2
+        )
+          .merge();
+
+      const title =
+        formatHomeV3TimelineTitle_(
+          event
+        );
+
+      if (
+        String(event.category || "")
+          .toUpperCase() === "PT"
+      ) {
+        const ptLink =
+          getHomeV2PTSignUpLink_();
+
+        if (ptLink) {
+          titleRange.setRichTextValue(
+            SpreadsheetApp
+              .newRichTextValue()
+              .setText(title)
+              .setLinkUrl(ptLink)
+              .build()
+          );
+        } else {
+          titleRange.setValue(title);
+        }
+      } else {
+        titleRange.setValue(title);
+      }
+
+      titleRange
+        .setHorizontalAlignment("left")
+        .setVerticalAlignment("middle")
+        .setWrap(true);
+
+      sh.getRange(
+        row,
+        HOME_V2.RIGHT_COL + 3
+      )
+        .setValue(
+          formatHomeV3TimelineWho_(
+            event
+          )
+        )
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setWrap(true);
+
+      sh.setRowHeight(row, 34);
+      row++;
+    });
+
+  while (
+    row <
+    endRowExclusive
+  ) {
+    sh.getRange(
+      row,
+      HOME_V2.RIGHT_COL,
+      1,
+      HOME_V2.RIGHT_WIDTH
+    )
+      .setBackground(theme.cardColor)
+      .clearContent();
+
+    sh.setRowHeight(row, 34);
+    row++;
+  }
+
+  styleHomeV2Card_(
+    sh,
+    startRow,
+    HOME_V2.RIGHT_COL,
+    blockRows,
+    HOME_V2.RIGHT_WIDTH
+  );
+}
+
+
+function drawHomeV3TimelineHeader_(
+  sh,
+  row
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  sh.getRange(
+    row,
+    HOME_V2.RIGHT_COL
+  )
+    .setValue("TIME");
+
+  sh.getRange(
+    row,
+    HOME_V2.RIGHT_COL + 1,
+    1,
+    2
+  )
+    .merge()
+    .setValue("EVENT");
+
+  sh.getRange(
+    row,
+    HOME_V2.RIGHT_COL + 3
+  )
+    .setValue("WHO");
+
+  sh.getRange(
+    row,
+    HOME_V2.RIGHT_COL,
+    1,
+    HOME_V2.RIGHT_WIDTH
+  )
+    .setBackground(theme.primaryColor)
+    .setFontFamily(HOME_V2.FONT)
+    .setFontColor("#FFFFFF")
+    .setFontSize(10)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setFontLine("none");
+
+  sh.setRowHeight(row, 30);
+}
+
+
+function formatHomeV3TimelineTitle_(event) {
+  event = event || {};
+
+  if (
+    String(event.category || "")
+      .toLowerCase() ===
+      "performance" &&
+    event.performanceNumber
+  ) {
+    return (
+      "Performance #" +
+      event.performanceNumber
+    );
+  }
+
+  if (
+    String(event.category || "")
+      .toUpperCase() === "PT"
+  ) {
+    return event.endTimeText
+      ? (
+          "PT until " +
+          event.endTimeText
+        )
+      : "PT Sign-Up";
+  }
+
+  if (
+    String(event.category || "")
+      .toLowerCase() ===
+      "rehearsal" &&
+    event.originalText
+  ) {
+    return event.originalText;
+  }
+
+  return event.title || "";
+}
+
+
+function formatHomeV3TimelineWho_(event) {
+  event = event || {};
+
+  if (
+    String(event.category || "")
+      .toUpperCase() === "PT"
+  ) {
+    return (
+      event.appliesTo ||
+      "PT"
+    );
+  }
+
+  return (
+    event.appliesTo ||
+    event.actor ||
+    event.room ||
+    ""
+  );
+}
+
+
+function getHomeV3NowForTimeline_() {
+  const props =
+    PropertiesService
+      .getDocumentProperties();
+
+  const override =
+    props.getProperty(
+      "HOME_V2_TIMELINE_TEST_NOW"
+    );
+
+  if (override) {
+    const date =
+      new Date(override);
+
+    if (
+      !isNaN(date.getTime())
+    ) {
+      return date;
+    }
+  }
+
+  const selectedDate =
+    getHomeV2SelectedDate_();
+
+  const realNow =
+    new Date();
+
+  if (
+    selectedDate instanceof Date &&
+    !isNaN(selectedDate.getTime())
+  ) {
+    const selectedNow =
+      new Date(selectedDate);
+
+    selectedNow.setHours(
+      realNow.getHours(),
+      realNow.getMinutes(),
+      realNow.getSeconds(),
+      realNow.getMilliseconds()
+    );
+
+    return selectedNow;
+  }
+
+  return realNow;
+}
+
+
+function getHomeV3TimelineState_(
+  events,
+  event,
+  now
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  const isCurrent =
+    isHomeV3CurrentTimelineEvent_(
+      events,
+      event,
+      now
+    );
+
+  const isPast =
+    isHomeV3PastTimelineEvent_(
+      events,
+      event,
+      now
+    );
+
+  if (isCurrent) {
+    return {
+      isCurrent: true,
+      background:
+        theme.secondaryColor,
+      fontColor: "#111111"
+    };
+  }
+
+  if (isPast) {
+    return {
+      isCurrent: false,
+      background:
+        theme.pastBackground,
+      fontColor: "#999999"
+    };
+  }
+
+  return {
+    isCurrent: false,
+    background: "#FFFFFF",
+    fontColor: "#111111"
+  };
+}
+
+
+function isHomeV3PastTimelineEvent_(
+  events,
+  event,
+  now
+) {
+  if (
+    !event ||
+    !event.time
+  ) {
+    return false;
+  }
+
+  const eventTime =
+    new Date(event.time)
+      .getTime();
+
+  if (
+    eventTime >=
+    now.getTime()
+  ) {
+    return false;
+  }
+
+  return !isHomeV3CurrentTimelineEvent_(
+    events,
+    event,
+    now
+  );
+}
+
+
+function isHomeV3CurrentTimelineEvent_(
+  events,
+  event,
+  now
+) {
+  const timed =
+    (events || [])
+      .filter(function (item) {
+        return (
+          item &&
+          item.time
+        );
+      })
+      .sort(function (a, b) {
+        return (
+          new Date(a.time)
+            .getTime() -
+          new Date(b.time)
+            .getTime()
+        );
+      });
+
+  if (
+    !timed.length ||
+    !event ||
+    !event.time
+  ) {
+    return false;
+  }
+
+  const nowTime =
+    now.getTime();
+
+  let activeStart =
+    null;
+
+  for (
+    let index = 0;
+    index < timed.length;
+    index++
+  ) {
+    const itemTime =
+      new Date(
+        timed[index].time
+      ).getTime();
+
+    if (
+      itemTime <= nowTime
+    ) {
+      activeStart =
+        itemTime;
+    } else {
+      break;
+    }
+  }
+
+  if (
+    activeStart === null
+  ) {
+    return false;
+  }
+
+  return (
+    new Date(event.time)
+      .getTime() ===
+    activeStart
+  );
+}

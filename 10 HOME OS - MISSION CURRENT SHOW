@@ -1,0 +1,122 @@
+/*************************************************
+ * 10 HOME OS - MISSION CURRENT SHOW / TODAY + TIMELINE
+ * Version: 0.3.0
+ *
+ * Uses ONLY the showState + timeline passed from Home.
+ * Does not call DecisionOS.
+ *************************************************/
+
+function drawCurrentShowAndTimeline_(sh, row, showState, timeline) {
+  showState = showState || {};
+  timeline = timeline || {};
+
+  const performances = showState.performances || [];
+  const events = normalizeHomeTimelineEvents_(timeline);
+
+  row = drawHomeSectionTitle_(sh, row, "CURRENT SHOW + TIMELINE");
+
+  sh.getRange(row, 1).setValue("Date");
+  sh.getRange(row, 2).setValue(showState.prettyDate || showState.date || "");
+  row++;
+
+  sh.getRange(row, 1).setValue("Weekly Tab");
+  sh.getRange(row, 2).setValue(showState.weeklyName || "");
+  row += 2;
+
+  sh.getRange(row, 1).setValue("Performance");
+  row++;
+
+  if (!performances.length) {
+    sh.getRange(row, 1).setValue("No performance found for selected IN/OUT date.");
+    row += 2;
+  } else {
+    performances.forEach(perf => {
+      sh.getRange(row, 1).setValue(formatHomePerformanceLabel_(perf));
+      row++;
+    });
+    row++;
+  }
+
+  sh.getRange(row, 1).setValue("Timeline");
+  row++;
+
+  if (!events.length) {
+    sh.getRange(row, 1).setValue("No timeline items found.");
+    row += 2;
+  } else {
+    events.forEach(item => {
+      sh.getRange(row, 1).setValue(item.time || "");
+      sh.getRange(row, 2).setValue(item.title || "");
+      row++;
+    });
+    row++;
+  }
+
+  return row + 1;
+}
+
+function normalizeHomeTimelineEvents_(timeline) {
+  if (!timeline) return [];
+
+  if (Array.isArray(timeline)) {
+    return timeline.map(normalizeHomeTimelineItem_);
+  }
+
+  if (Array.isArray(timeline.events)) {
+    return timeline.events.map(normalizeHomeTimelineItem_);
+  }
+
+  if (Array.isArray(timeline.items)) {
+    return timeline.items.map(normalizeHomeTimelineItem_);
+  }
+
+  if (Array.isArray(timeline.timeline)) {
+    return timeline.timeline.map(normalizeHomeTimelineItem_);
+  }
+
+  return [];
+}
+
+function normalizeHomeTimelineItem_(item) {
+  if (typeof item === "string") {
+    return {
+      time: "",
+      title: item
+    };
+  }
+
+  item = item || {};
+
+  return {
+    time: item.time || item.startTime || item.displayTime || "",
+    title: item.title || item.label || item.note || item.description || ""
+  };
+}
+
+function formatHomePerformanceLabel_(perf) {
+  if (typeof perf === "string") return perf;
+
+  perf = perf || {};
+
+  return (
+    perf.label ||
+    perf.performanceLabel ||
+    perf.name ||
+    perf.title ||
+    perf.performance ||
+    [
+      perf.performanceNumber ? "PERFORMANCE #" + perf.performanceNumber : "",
+      perf.time || perf.performanceTime || ""
+    ].filter(Boolean).join(" - ") ||
+    JSON.stringify(perf)
+  );
+}
+
+function drawHomeSectionTitle_(sh, row, title) {
+  sh.getRange(row, 1).setValue(title);
+  sh.getRange(row, 1, 1, 4)
+    .merge()
+    .setFontWeight("bold")
+    .setFontSize(12);
+  return row + 2;
+}

@@ -1,0 +1,97 @@
+/*************************************************
+ * 10 HOMEOS - TASKS
+ * Version: 2.2.0
+ *************************************************/
+
+let HOME_CURRENT_CONTEXT_ = null;
+let HOME_TASK_CONTEXT_CACHE_ = null;
+
+function getHomeTaskContext_() {
+  if (HOME_TASK_CONTEXT_CACHE_) return HOME_TASK_CONTEXT_CACHE_;
+
+  const ctx =
+    HOME_CURRENT_CONTEXT_ ||
+    buildHomeContext_();
+
+  const showState = ctx.showState || {};
+
+  HOME_TASK_CONTEXT_CACHE_ = {
+    showState,
+    snapshotId: buildHomeSnapshotIdFromShowState_(showState),
+    hasGuestSpeller: homeV2HasGuestSpeller_(showState),
+    insertLineCount: getHomeV2PrincipalOuts_(showState).length
+  };
+
+  return HOME_TASK_CONTEXT_CACHE_;
+}
+
+function clearHomeTaskContextCache_() {
+  HOME_TASK_CONTEXT_CACHE_ = null;
+}
+
+function buildHomeSnapshotIdFromShowState_(showState) {
+  showState = showState || {};
+
+  const perf = (showState.performances || [])[0] || {};
+  const perfNumber = perf.number || perf.performanceNumber || "NO_PERF";
+  const dateText = showState.prettyDate || showState.date || "NO_DATE";
+
+  return String(dateText + "|" + perfNumber)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_");
+}
+
+function buildHomeWeeklyTasks_() {
+  return [
+    {
+      id: "WEEKLY_PREP",
+      title: "Weekly Schedule Prepared",
+      button: "Prep Weekly",
+      action: "homeButtonCreateNextWeeklySchedule"
+    },
+    {
+      id: "WEEKLY_EMAIL",
+      title: "Weekly Email",
+      button: "Draft",
+      action: "homeButtonWeeklyEmailDraft"
+    },
+    {
+      id: "PAYROLL_EMAIL",
+      title: "Payroll Email",
+      button: "Draft",
+      action: "homeButtonPayrollEmailDraft"
+    },
+    {
+      id: "GUEST_SPELLER_EMAIL",
+      title: "Guest Speller Email",
+      button: "Draft",
+      action: "homeButtonGuestSpellerEmail"
+    },
+    {
+      id: "PERISHABLES_EMAIL",
+      title: "Perishables Email",
+      button: "Draft",
+      action: "homeButtonPerishablesEmailDraft"
+    }
+  ];
+}
+
+let HOME_WORKFLOW_STATUS_CACHE_ = null;
+
+function workflowStatusIsDoneFast_(taskId) {
+  const ctx = getHomeTaskContext_();
+  const snapshotId = ctx.snapshotId || "NO_SNAPSHOT";
+
+  if (!HOME_WORKFLOW_STATUS_CACHE_) {
+    HOME_WORKFLOW_STATUS_CACHE_ =
+      PropertiesService.getDocumentProperties().getProperties();
+  }
+
+  const key = [
+    "WORKFLOW",
+    snapshotId,
+    String(taskId || "").toUpperCase().replace(/\s+/g, "_")
+  ].join("|");
+
+  return HOME_WORKFLOW_STATUS_CACHE_[key] === "TRUE";
+}

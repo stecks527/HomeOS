@@ -731,6 +731,6049 @@ function drawHomeV2HeadlineStrip_(
   );
 }
 
+function buildHomeV2HeadlineStripItems_(
+  showState
+) {
+  const items = [];
+
+  const principalOuts =
+    getHomeV2PrincipalOuts_(
+      showState
+    );
+
+  if (
+    principalOuts.length
+  ) {
+    items.push(
+      principalOuts.length +
+      " Principal Out" +
+      (
+        principalOuts.length === 1
+          ? ""
+          : "s"
+      )
+    );
+  }
+
+  const conductor =
+    getHomeConductorFromShowState_(
+      showState
+    );
+
+  if (conductor) {
+    items.push(
+      "Conductor: " +
+      conductor
+    );
+  }
+
+  const guest =
+    getHomeGuestSpellerFromShowState_(
+      showState
+    );
+
+  if (guest) {
+    items.push(
+      "Guest Speller: " +
+      guest
+    );
+  }
+
+  const notes =
+    normalizeHomeV2Notes_(
+      showState &&
+      showState.notes
+    );
+
+  const notesUpper =
+    notes.toUpperCase();
+
+  if (
+    notesUpper.includes(
+      "OFFICE SHOW"
+    )
+  ) {
+    items.push(
+      "Office Show"
+    );
+  }
+
+  const pressItem =
+    getHomeV2PressHeadlineItem_(
+      notes
+    );
+
+  if (pressItem) {
+    items.push(
+      pressItem
+    );
+  }
+
+  return items;
+}
+
+
+function getHomeV2PressHeadlineItem_(
+  notes
+) {
+  const lines =
+    String(notes || "")
+      .split(/\n+/)
+      .map(
+        function (line) {
+          return String(
+            line || ""
+          )
+            .replace(
+              /^[-•]\s*/,
+              ""
+            )
+            .trim();
+        }
+      )
+      .filter(Boolean);
+
+  for (
+    let index = 0;
+    index < lines.length;
+    index++
+  ) {
+    const line =
+      lines[index];
+
+    const upper =
+      line.toUpperCase();
+
+    const isPress =
+      upper.includes("PRESS") ||
+      upper.includes("FILM") ||
+      upper.includes("SOCIAL MEDIA") ||
+      upper.includes("VIDEO");
+
+    if (!isPress) {
+      continue;
+    }
+
+    const timeMatch =
+      line.match(
+        /\b\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b/i
+      );
+
+    const timeText =
+      timeMatch
+        ? timeMatch[0]
+            .toUpperCase()
+            .replace(
+              /^(\d{1,2})(AM|PM)$/,
+              "$1:00 $2"
+            )
+        : "";
+
+    return timeText
+      ? (
+          "Press / Social Media Event: " +
+          timeText
+        )
+      : "Press / Social Media Event";
+  }
+
+  return "";
+}
+
+function getHomeV2PrincipalOuts_(showState) {
+  return getHomeV2CastOuts_(showState).filter(function (item) {
+    item = item || {};
+
+    const out = String(item.out || item.Out || "").trim();
+    const role = String(item.role || item.Role || "").toLowerCase();
+
+    if (!out) return false;
+
+    if (
+      role.includes("swing") ||
+      role.includes("understudy") ||
+      role.includes("u/s") ||
+      role.includes("standby")
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+/*************************************************
+ * CHUNK 4 — TODAY'S COMPANY + NOTES
+ * Version: 0.4.0
+ * Status: ACTIVE
+ *
+ * Complete replacement chunk.
+ *
+ * Replace the entire current Chunk 4 section beginning at:
+ *   CHUNK 4 — TODAY'S COMPANY + NOTES
+ *
+ * Stop immediately before:
+ *   HOMEOS TASK CARDS
+ *
+ * Improvements:
+ * - Full actor names
+ * - Full character names
+ * - Clear out classification at far right
+ * - Existing Notes behavior preserved
+ *************************************************/
+
+
+/* =========================================================
+ * TODAY'S COMPANY
+ * ========================================================= */
+
+function drawHomeV2TodayCompany_(
+  sh,
+  row,
+  showState
+) {
+  const lines =
+    buildHomeV2TodayCompanyObjects_(
+      showState
+    );
+
+  if (!lines.length) {
+    return row;
+  }
+
+  const startRow =
+    row;
+
+  row =
+    drawHomeV2CardTitle_(
+      sh,
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.FULL_WIDTH,
+      "TODAY'S COMPANY"
+    );
+
+  lines.forEach(
+    function (item) {
+      /*
+       * OUT ACTOR
+       */
+      sh.getRange(
+        row,
+        1,
+        1,
+        3
+      )
+        .merge()
+        .setValue(
+          item.outActor
+        )
+        .setFontSize(14)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("left")
+        .setVerticalAlignment("middle");
+
+      /*
+       * OUT LABEL
+       */
+      sh.getRange(
+        row,
+        4
+      )
+        .setValue("OUT")
+        .setFontSize(12)
+        .setFontWeight("bold")
+        .setFontColor("#B00020")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+
+      /*
+       * ROLE / COVERAGE
+       */
+      sh.getRange(
+        row,
+        5,
+        1,
+        4
+      )
+        .merge()
+        .setValue(
+          item.inActor
+            ? (
+                item.role +
+                " = " +
+                item.inActor
+              )
+            : item.role
+        )
+        .setFontSize(13)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("left")
+        .setVerticalAlignment("middle")
+        .setWrap(true);
+
+      /*
+       * CLASSIFICATION
+       */
+      sh.getRange(
+        row,
+        9
+      )
+        .setValue(
+          item.classification ||
+          ""
+        )
+        .setFontSize(10)
+        .setFontWeight("bold")
+        .setFontColor(
+          getHomeV2OutClassificationColor_(
+            item.classification
+          )
+        )
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setWrap(true);
+
+      sh.setRowHeight(
+        row,
+        44
+      );
+
+      row++;
+    }
+  );
+
+  fillHomeV2CardBody_(
+    sh,
+    startRow + 1,
+    HOME_V2.FULL_COL,
+    row - startRow - 1,
+    HOME_V2.FULL_WIDTH
+  );
+
+  styleHomeV2Card_(
+    sh,
+    startRow,
+    HOME_V2.FULL_COL,
+    row - startRow,
+    HOME_V2.FULL_WIDTH
+  );
+
+  return (
+    row +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+
+function buildHomeV2TodayCompanyLines_(
+  showState
+) {
+  return buildHomeV2TodayCompanyObjects_(
+    showState
+  ).map(
+    function (item) {
+      const main =
+        item.outActor +
+        " OUT, " +
+        item.role +
+        (
+          item.inActor
+            ? " = " + item.inActor
+            : ""
+        );
+
+      return item.classification
+        ? main +
+          " — " +
+          item.classification
+        : main;
+    }
+  );
+}
+
+
+function buildHomeV2TodayCompanyObjects_(
+  showState
+) {
+  const liveRows =
+    buildHomeV2TodayCompanyObjectsFromInOut_();
+
+  if (liveRows.length) {
+    return liveRows;
+  }
+
+  return getHomeV2CastOuts_(
+    showState
+  )
+    .map(
+      function (item) {
+        item =
+          item || {};
+
+        const rawOutActor =
+          normalizeHomeV2Text_(
+            item.out ||
+            item.Out ||
+            item.actorOut ||
+            item.actor ||
+            ""
+          );
+
+        const rawRole =
+          normalizeHomeV2Text_(
+            item.role ||
+            item.Role ||
+            item.character ||
+            ""
+          );
+
+        const rawInActor =
+          normalizeHomeV2Text_(
+            item.in ||
+            item.In ||
+            item.actorIn ||
+            item.coverActor ||
+            item.cover ||
+            ""
+          );
+
+        const reason =
+          normalizeHomeV2Text_(
+            item.reason ||
+            item.Reason ||
+            item.outType ||
+            item.approvalStatus ||
+            ""
+          );
+
+        if (!rawOutActor) {
+          return null;
+        }
+
+        return buildHomeV2TodayCompanyObject_(
+          rawOutActor,
+          rawInActor,
+          rawRole,
+          reason,
+          null
+        );
+      }
+    )
+    .filter(Boolean);
+}
+
+
+function buildHomeV2TodayCompanyObjectsFromInOut_() {
+  const ss =
+    SpreadsheetApp.getActive();
+
+  const sh =
+    ss.getSheetByName(
+      "IN/OUT"
+    );
+
+  if (!sh) {
+    return [];
+  }
+
+  const values =
+    sh
+      .getRange("A6:G23")
+      .getDisplayValues();
+
+  const output = [];
+
+  const stopLabels = [
+    "CALLING SM",
+    "DECK SM",
+    "CONDUCTOR",
+    "A1",
+    "A1 / MIXER",
+    "PRODUCTION SOUND"
+  ];
+
+  for (
+    let index = 0;
+    index < values.length;
+    index++
+  ) {
+    const sourceRow =
+      index + 6;
+
+    const row =
+      values[index];
+
+    const colA =
+      normalizeHomeV2Text_(
+        row[0]
+      );
+
+    const colC =
+      normalizeHomeV2Text_(
+        row[2]
+      );
+
+    const colD =
+      normalizeHomeV2Text_(
+        row[3]
+      );
+
+    const colE =
+      normalizeHomeV2Text_(
+        row[4]
+      );
+
+    const colF =
+      normalizeHomeV2Text_(
+        row[5]
+      );
+
+    const colG =
+      normalizeHomeV2Text_(
+        row[6]
+      );
+
+    const rowLabels = [
+      colA,
+      colC,
+      colD,
+      colE,
+      colF,
+      colG
+    ].map(
+      function (value) {
+        return String(
+          value || ""
+        )
+          .toUpperCase()
+          .trim();
+      }
+    );
+
+    const reachedAssignments =
+      rowLabels.some(
+        function (value) {
+          return (
+            stopLabels.indexOf(
+              value
+            ) !== -1
+          );
+        }
+      );
+
+    if (reachedAssignments) {
+      break;
+    }
+
+    if (!colA) {
+      continue;
+    }
+
+    output.push(
+      buildHomeV2TodayCompanyObject_(
+        colA,
+        colC,
+        colE || colD || colF,
+        colG,
+        sourceRow
+      )
+    );
+  }
+
+  return output.filter(Boolean);
+}
+
+
+/* =========================================================
+ * COMPANY ROW NORMALIZATION
+ * ========================================================= */
+
+function buildHomeV2TodayCompanyObject_(
+  rawOutActor,
+  rawInActor,
+  rawRole,
+  reason,
+  sourceRow
+) {
+  const outActor =
+    expandHomeV2PersonName_(
+      rawOutActor
+    );
+
+  const noCoverNeeded =
+    homeV2IsNonCompanyOut_(
+      rawRole,
+      reason
+    );
+
+  const contactDescriptor =
+    noCoverNeeded
+      ? getHomeV2ContactDescriptor_(
+          outActor
+        )
+      : "";
+
+  const role =
+    contactDescriptor ||
+    expandHomeV2CharacterName_(
+      rawRole,
+      outActor
+    ) ||
+    rawRole ||
+    "Pending Assignment";
+
+  const inActor =
+    noCoverNeeded
+      ? ""
+      : (
+          expandHomeV2PersonName_(
+            rawInActor
+          ) ||
+          "TBD"
+        );
+
+  return {
+    sourceRow:
+      sourceRow || null,
+
+    outActor:
+      outActor ||
+      rawOutActor,
+
+    role:
+      role,
+
+    inActor:
+      inActor,
+
+    reason:
+      reason || "",
+
+    classification:
+      classifyHomeV2CompanyOut_(
+        reason
+      ),
+
+    noCoverNeeded:
+      noCoverNeeded
+  };
+}
+
+
+/* =========================================================
+ * FULL PERSON NAMES
+ * ========================================================= */
+
+function expandHomeV2PersonName_(
+  value
+) {
+  const input =
+    normalizeHomeV2Text_(
+      value
+    );
+
+  if (!input) {
+    return "";
+  }
+
+  const castData =
+    typeof getCastListData_ ===
+      "function"
+      ? getCastListData_()
+      : null;
+
+  const rows =
+    castData &&
+    Array.isArray(
+      castData.rows
+    )
+      ? castData.rows
+      : [];
+
+  const wanted =
+    normalizeHomeV2LookupText_(
+      input
+    );
+
+  for (
+    let index = 0;
+    index < rows.length;
+    index++
+  ) {
+    const row =
+      rows[index] || {};
+
+    const fullName =
+      normalizeHomeV2Text_(
+        row.fullName
+      );
+
+    const firstInitial =
+      normalizeHomeV2Text_(
+        row.firstInitial
+      );
+
+    if (
+      normalizeHomeV2LookupText_(
+        fullName
+      ) === wanted ||
+      normalizeHomeV2LookupText_(
+        firstInitial
+      ) === wanted
+    ) {
+      return (
+        fullName ||
+        input
+      );
+    }
+  }
+
+  /*
+   * Contact Sheet fallback for crew and Stage Management.
+   */
+  const contactName =
+    findHomeV2FullNameFromContactSheet_(
+      input
+    );
+
+  return (
+    contactName ||
+    input
+  );
+}
+
+
+function findHomeV2FullNameFromContactSheet_(
+  value
+) {
+  const wanted =
+    normalizeHomeV2LookupText_(
+      value
+    );
+
+  if (!wanted) {
+    return "";
+  }
+
+  const ss =
+    SpreadsheetApp.getActive();
+
+  const sh =
+    ss.getSheetByName(
+      "Contact Sheet"
+    );
+
+  if (
+    !sh ||
+    sh.getLastRow() < 1
+  ) {
+    return "";
+  }
+
+  const values =
+    sh
+      .getRange(
+        1,
+        1,
+        sh.getLastRow(),
+        Math.min(
+          sh.getLastColumn(),
+          6
+        )
+      )
+      .getDisplayValues();
+
+  for (
+    let rowIndex = 0;
+    rowIndex < values.length;
+    rowIndex++
+  ) {
+    const row =
+      values[rowIndex];
+
+    const possibleNames = [
+      row[0] || "",
+      row[1] || ""
+    ];
+
+    const matched =
+      possibleNames.some(
+        function (name) {
+          return (
+            normalizeHomeV2LookupText_(
+              name
+            ) === wanted
+          );
+        }
+      );
+
+    if (matched) {
+      return normalizeHomeV2Text_(
+        row[0] ||
+        row[1] ||
+        value
+      );
+    }
+  }
+
+  return "";
+}
+
+
+/* =========================================================
+ * FULL CHARACTER NAMES
+ * ========================================================= */
+
+function expandHomeV2CharacterName_(
+  roleValue,
+  outActor
+) {
+  const role =
+    normalizeHomeV2Text_(
+      roleValue
+    );
+
+  const castData =
+    typeof getCastListData_ ===
+      "function"
+      ? getCastListData_()
+      : null;
+
+  const rows =
+    castData &&
+    Array.isArray(
+      castData.rows
+    )
+      ? castData.rows
+      : [];
+
+  const actorKey =
+    normalizeHomeV2LookupText_(
+      outActor
+    );
+
+  /*
+   * The actor's principal character is the safest match.
+   */
+  if (actorKey) {
+    for (
+      let index = 0;
+      index < rows.length;
+      index++
+    ) {
+      const row =
+        rows[index] || {};
+
+      if (
+        normalizeHomeV2LookupText_(
+          row.fullName
+        ) === actorKey &&
+        row.character
+      ) {
+        return normalizeHomeV2Text_(
+          row.character
+        );
+      }
+    }
+  }
+
+  const roleKey =
+    normalizeHomeV2LookupText_(
+      role
+    );
+
+  if (!roleKey) {
+    return "";
+  }
+
+  for (
+    let index = 0;
+    index < rows.length;
+    index++
+  ) {
+    const row =
+      rows[index] || {};
+
+    const fullCharacter =
+      normalizeHomeV2Text_(
+        row.character
+      );
+
+    const shortRole =
+      normalizeHomeV2Text_(
+        row.role
+      );
+
+    const characterKey =
+      normalizeHomeV2LookupText_(
+        fullCharacter
+      );
+
+    const shortRoleKey =
+      normalizeHomeV2LookupText_(
+        shortRole
+      );
+
+    if (
+      roleKey === characterKey ||
+      roleKey === shortRoleKey ||
+      (
+        characterKey &&
+        characterKey.includes(
+          roleKey
+        )
+      )
+    ) {
+      return (
+        fullCharacter ||
+        role
+      );
+    }
+  }
+
+  return role;
+}
+
+
+/* =========================================================
+ * OUT CLASSIFICATION
+ * ========================================================= */
+
+function classifyHomeV2CompanyOut_(
+  reason
+) {
+  const text =
+    String(
+      reason || ""
+    )
+      .toUpperCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (!text) {
+    return "";
+  }
+
+  if (
+    text.includes("CALL-IN") ||
+    text.includes("CALL IN") ||
+    text.includes("CALLED IN") ||
+    text.includes("SICK") ||
+    text.includes("ILLNESS")
+  ) {
+    return "CALL-IN";
+  }
+
+  if (
+    text === "PD" ||
+    text.includes("PERSONAL DAY") ||
+    (
+      text.includes("APPROVED") &&
+      text.includes("PD")
+    )
+  ) {
+    return "APPROVED PD";
+  }
+
+  if (
+    text.includes("VACATION")
+  ) {
+    return "VACATION";
+  }
+
+  if (
+    text.includes("MLOA")
+  ) {
+    return "MLOA";
+  }
+
+  if (
+    text.includes("LOA")
+  ) {
+    return "LOA";
+  }
+
+  return text;
+}
+
+
+function getHomeV2OutClassificationColor_(
+  classification
+) {
+  const text =
+    String(
+      classification || ""
+    ).toUpperCase();
+
+  if (
+    text === "CALL-IN"
+  ) {
+    return "#B00020";
+  }
+
+  if (
+    text === "APPROVED PD" ||
+    text === "VACATION"
+  ) {
+    return getHomeV2Theme_()
+      .primaryColor;
+  }
+
+  return "#555555";
+}
+
+
+/* =========================================================
+ * LOOKUP NORMALIZATION
+ * ========================================================= */
+
+function normalizeHomeV2LookupText_(
+  value
+) {
+  return String(
+    value || ""
+  )
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+function homeV2IsNonCompanyOut_(
+  role,
+  reason
+) {
+  const text =
+    String(
+      role +
+      " " +
+      reason
+    ).toLowerCase();
+
+  return (
+    text.includes("swing") ||
+    text.includes("understudy") ||
+    text.includes("u/s") ||
+    text.includes("standby")
+  );
+}
+
+
+function getHomeV2ContactDescriptor_(
+  personName
+) {
+  const cleanName =
+    normalizeHomeV2Text_(
+      personName
+    );
+
+  if (!cleanName) {
+    return "";
+  }
+
+  const ss =
+    SpreadsheetApp.getActive();
+
+  const contactSheet =
+    ss.getSheetByName(
+      "Contact Sheet"
+    );
+
+  if (
+    !contactSheet ||
+    contactSheet.getLastRow() < 1
+  ) {
+    return "";
+  }
+
+  const values =
+    contactSheet
+      .getRange(
+        1,
+        1,
+        contactSheet.getLastRow(),
+        6
+      )
+      .getDisplayValues();
+
+  const wantedName =
+    normalizeHomeV2LookupText_(
+      cleanName
+    );
+
+  for (
+    let index = 0;
+    index < values.length;
+    index++
+  ) {
+    const row =
+      values[index];
+
+    const rowContainsPerson =
+      row.some(
+        function (value) {
+          return (
+            normalizeHomeV2LookupText_(
+              value
+            ) === wantedName
+          );
+        }
+      );
+
+    if (!rowContainsPerson) {
+      continue;
+    }
+
+    const descriptor =
+      normalizeHomeV2Text_(
+        row[2]
+      );
+
+    if (descriptor) {
+      return descriptor;
+    }
+  }
+
+  return "";
+}
+
+
+/* =========================================================
+ * NOTES
+ * Existing behavior preserved.
+ * ========================================================= */
+
+function drawHomeV2Notes_(
+  sh,
+  row,
+  showState
+) {
+  const notes =
+    normalizeHomeV2Notes_(
+      showState.notes
+    );
+
+  if (!notes) {
+    return row;
+  }
+
+  const theme =
+    getHomeV2Theme_();
+
+  const startRow =
+    row;
+
+  row =
+    drawHomeV2CardTitle_(
+      sh,
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.FULL_WIDTH,
+      "NOTES"
+    );
+
+  const noteRows =
+    Math.max(
+      2,
+      Math.min(
+        7,
+        notes.split("\n").length +
+        1
+      )
+    );
+
+  sh.getRange(
+    row,
+    HOME_V2.FULL_COL,
+    noteRows,
+    HOME_V2.FULL_WIDTH
+  )
+    .merge()
+    .setValue(
+      notes
+    )
+    .setFontSize(13)
+    .setVerticalAlignment("top")
+    .setHorizontalAlignment("left")
+    .setBackground(
+      theme.noteBackground
+    );
+
+  sh.setRowHeights(
+    row,
+    noteRows,
+    30
+  );
+
+  row +=
+    noteRows;
+
+  fillHomeV2CardBody_(
+    sh,
+    startRow + 1,
+    HOME_V2.FULL_COL,
+    row - startRow - 1,
+    HOME_V2.FULL_WIDTH
+  );
+
+  styleHomeV2Card_(
+    sh,
+    startRow,
+    HOME_V2.FULL_COL,
+    row - startRow,
+    HOME_V2.FULL_WIDTH
+  );
+
+  return (
+    row +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+/*************************************************
+ * HOMEOS TASK CARDS + HOME INTELLIGENCE
+ * Version: 2.6.0
+ * Status: ACTIVE
+ *
+ * Complete replacement chunk.
+ *
+ * Replace the entire current section beginning at:
+ *   HOMEOS TASK CARDS
+ *
+ * Stop immediately before:
+ *   CHUNK 7 — TIMELINE ITEMS FROM NOTES
+ *
+ * Task display model:
+ * {
+ *   title: "Main task",
+ *   details: ["Detail one", "Detail two"],
+ *   footnote: "Optional note"
+ * }
+ *
+ * The renderer owns bullets, spacing, sizes, and styles.
+ *************************************************/
+
+function drawHomeV2Tasks_(
+  sh,
+  row,
+  showState
+) {
+  const startRow =
+    row;
+
+  clearHomeTaskContextCache_();
+
+  HOME_TASK_CONTEXT_CACHE_ = {
+    showState:
+      showState || {},
+
+    snapshotId:
+      buildHomeSnapshotIdFromShowState_(
+        showState || {}
+      ),
+
+    hasGuestSpeller:
+      homeV2HasGuestSpeller_(
+        showState || {}
+      ),
+
+    insertLineCount:
+      getHomeV2PrincipalOuts_(
+        showState || {}
+      ).length
+  };
+
+  /*
+   * Blue card titles.
+   */
+  drawHomeV2CardTitle_(
+    sh,
+    row,
+    HOME_V2.LEFT_COL,
+    HOME_V2.LEFT_WIDTH,
+    "TODAY'S TASKS"
+  );
+
+  drawHomeV2CardTitle_(
+    sh,
+    row,
+    HOME_V2.RIGHT_COL,
+    HOME_V2.RIGHT_WIDTH,
+    "WEEKLY TASKS"
+  );
+
+  row++;
+
+  /*
+   * DONE | TASK | RUN headings.
+   */
+  drawHomeV2TaskHeaders_(
+    sh,
+    row,
+    HOME_V2.LEFT_COL,
+    HOME_V2.LEFT_WIDTH
+  );
+
+  drawHomeV2TaskHeaders_(
+    sh,
+    row,
+    HOME_V2.RIGHT_COL,
+    HOME_V2.RIGHT_WIDTH
+  );
+
+  row++;
+
+  const todayTasks =
+    buildHomeTodayTasks_();
+
+  const weeklyTasks =
+    buildHomeWeeklyTasks_();
+
+  const todayRows =
+    drawHomeV2TaskList_(
+      sh,
+      row,
+      HOME_V2.LEFT_COL,
+      HOME_V2.LEFT_WIDTH,
+      todayTasks,
+      showState
+    );
+
+  const weeklyRows =
+    drawHomeV2TaskList_(
+      sh,
+      row,
+      HOME_V2.RIGHT_COL,
+      HOME_V2.RIGHT_WIDTH,
+      weeklyTasks,
+      showState
+    );
+
+  const taskRows =
+    Math.max(
+      todayRows,
+      weeklyRows,
+      1
+    );
+
+  /*
+   * Header row plus all task rows.
+   */
+  const bodyRows =
+    taskRows + 1;
+
+  fillHomeV2CardBody_(
+    sh,
+    startRow + 1,
+    HOME_V2.LEFT_COL,
+    bodyRows,
+    HOME_V2.LEFT_WIDTH
+  );
+
+  fillHomeV2CardBody_(
+    sh,
+    startRow + 1,
+    HOME_V2.RIGHT_COL,
+    bodyRows,
+    HOME_V2.RIGHT_WIDTH
+  );
+
+  /*
+   * Reapply the lighter RUN-column background after the
+   * card-body fill.
+   */
+  sh.getRange(
+    startRow + 1,
+    HOME_V2.LEFT_COL + HOME_V2.LEFT_WIDTH - 1,
+    bodyRows,
+    1
+  )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  sh.getRange(
+    startRow + 1,
+    HOME_V2.RIGHT_COL + HOME_V2.RIGHT_WIDTH - 1,
+    bodyRows,
+    1
+  )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  /*
+   * Separate card borders with horizontal row rules only.
+   */
+  styleHomeV2TaskCard_(
+    sh,
+    startRow,
+    HOME_V2.LEFT_COL,
+    bodyRows + 1,
+    HOME_V2.LEFT_WIDTH
+  );
+
+  styleHomeV2TaskCard_(
+    sh,
+    startRow,
+    HOME_V2.RIGHT_COL,
+    bodyRows + 1,
+    HOME_V2.RIGHT_WIDTH
+  );
+
+  return (
+    startRow +
+    bodyRows +
+    1 +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+function styleHomeV2TaskCard_(
+  sh,
+  startRow,
+  startCol,
+  numRows,
+  numCols
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  const cardRange =
+    sh.getRange(
+      startRow,
+      startCol,
+      numRows,
+      numCols
+    );
+
+  /*
+   * Remove all internal gridlines first.
+   */
+  cardRange.setBorder(
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  );
+
+  /*
+   * Light horizontal dividers between rows.
+   * No internal vertical rules.
+   */
+  cardRange.setBorder(
+    false,  // top
+    false,  // left
+    false,  // bottom
+    false,  // right
+    false,  // vertical
+    true,   // horizontal
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID
+  );
+
+  /*
+   * Stronger outside frame around the full card.
+   */
+  cardRange.setBorder(
+    true,
+    true,
+    true,
+    true,
+    null,
+    null,
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+  );
+
+  /*
+   * A slightly stronger divider under the blue title row.
+   */
+  sh.getRange(
+    startRow,
+    startCol,
+    1,
+    numCols
+  )
+    .setBorder(
+      null,
+      null,
+      true,
+      null,
+      false,
+      false,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+}
+
+function drawHomeV2TaskHeaders_(
+  sh,
+  row,
+  col,
+  width
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  /*
+   * DONE
+   */
+  sh.getRange(
+    row,
+    col
+  )
+    .setValue("DONE")
+    .setFontSize(9)
+    .setFontWeight("bold")
+    .setFontColor(
+      theme.mutedText
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  /*
+   * TASK
+   */
+  sh.getRange(
+    row,
+    col + 1,
+    1,
+    width - 2
+  )
+    .merge()
+    .setValue("TASK")
+    .setFontSize(9)
+    .setFontWeight("bold")
+    .setFontColor(
+      theme.mutedText
+    )
+    .setHorizontalAlignment(
+      "left"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  /*
+   * RUN
+   */
+  sh.getRange(
+    row,
+    col + width - 1
+  )
+    .setValue("RUN")
+    .setFontSize(9)
+    .setFontWeight("bold")
+    .setFontColor(
+      theme.mutedText
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  sh.setRowHeight(
+    row,
+    24
+  );
+}
+
+function drawHomeV2TaskList_(
+  sh,
+  row,
+  col,
+  width,
+  tasks,
+  showState
+) {
+  const startRow =
+    row;
+
+  const theme =
+    getHomeV2Theme_();
+
+  const taskList =
+    Array.isArray(tasks)
+      ? tasks
+      : [];
+
+  if (!taskList.length) {
+    drawHomeV2EmptyLine_(
+      sh,
+      row,
+      col,
+      width,
+      "No tasks found."
+    );
+
+    return 1;
+  }
+
+  const runValidation =
+    SpreadsheetApp
+      .newDataValidation()
+      .requireValueInList(
+        ["▶ Run"],
+        true
+      )
+      .setAllowInvalid(false)
+      .build();
+
+  taskList.forEach(
+    function (task) {
+      task =
+        task || {};
+
+      const done =
+        workflowStatusIsDoneFast_(
+          task.id
+        );
+
+      const display =
+        getHomeV2TaskDisplay_(
+          task,
+          showState
+        );
+
+      /*
+       * DONE CHECKBOX
+       */
+      sh.getRange(
+        row,
+        col
+      )
+        .clearContent()
+        .clearDataValidations()
+        .insertCheckboxes()
+        .setValue(done)
+        .setNote(
+          "WORKFLOW_TASK:" +
+          task.id
+        )
+        .setHorizontalAlignment(
+          "center"
+        )
+        .setVerticalAlignment(
+          "middle"
+        )
+        .setBackground(
+          theme.cardColor
+        );
+
+      /*
+       * TASK TITLE + BULLET DETAILS
+       */
+      const titleRange =
+        sh.getRange(
+          row,
+          col + 1,
+          1,
+          width - 2
+        )
+          .merge();
+
+      titleRange
+        .setRichTextValue(
+          buildHomeV2TaskRichText_(
+            display,
+            done
+          )
+        )
+        .setHorizontalAlignment(
+          "left"
+        )
+        .setVerticalAlignment(
+          "middle"
+        )
+        .setWrap(true)
+        .setBackground(
+          theme.cardColor
+        );
+
+      /*
+       * RUN CONTROL
+       */
+      const actionCell =
+        sh.getRange(
+          row,
+          col + width - 1
+        );
+
+      actionCell
+        .clearContent()
+        .clearDataValidations()
+        .setDataValidation(
+          runValidation
+        )
+        .setNote(
+          task.action
+            ? (
+                "MISSION_ACTION:" +
+                task.action
+              )
+            : ""
+        )
+        .setFontSize(11)
+        .setFontWeight("bold")
+        .setFontColor(
+          task.action
+            ? theme.primaryColor
+            : theme.mutedText
+        )
+        .setHorizontalAlignment(
+          "center"
+        )
+        .setVerticalAlignment(
+          "middle"
+        )
+        .setBackground(
+          "#F6F8FC"
+        );
+
+      if (!task.action) {
+        actionCell
+          .clearDataValidations()
+          .setValue("—");
+      }
+
+      const detailCount =
+        Array.isArray(
+          display.details
+        )
+          ? display.details.length
+          : 0;
+
+      const rowHeight =
+        detailCount
+          ? (
+              48 +
+              detailCount * 17 +
+              (
+                display.footnote
+                  ? 18
+                  : 0
+              )
+            )
+          : (
+              String(
+                display.title || ""
+              ).length > 42
+                ? 58
+                : 40
+            );
+
+      sh.setRowHeight(
+        row,
+        rowHeight
+      );
+
+      row++;
+    }
+  );
+
+  return (
+    row -
+    startRow
+  );
+}
+
+function buildHomeV2TaskRichText_(
+  display,
+  done
+) {
+  display =
+    display || {};
+
+  const title =
+    String(
+      display.title || ""
+    );
+
+  const details =
+    Array.isArray(
+      display.details
+    )
+      ? display.details
+          .map(function (item) {
+            return String(
+              item || ""
+            ).trim();
+          })
+          .filter(Boolean)
+      : [];
+
+  const footnote =
+    String(
+      display.footnote || ""
+    ).trim();
+
+  const lines = [
+    title
+  ];
+
+  if (details.length) {
+    lines.push("");
+
+    details.forEach(
+      function (detail) {
+        lines.push(
+          "  • " +
+          detail
+        );
+      }
+    );
+  }
+
+  if (footnote) {
+    lines.push("");
+    lines.push(
+      "  " +
+      footnote
+    );
+  }
+
+  const text =
+    lines.join("\n");
+
+  const builder =
+    SpreadsheetApp
+      .newRichTextValue()
+      .setText(
+        text
+      );
+
+  const theme =
+    getHomeV2Theme_();
+
+  const titleStyle =
+    SpreadsheetApp
+      .newTextStyle()
+      .setFontFamily(
+        HOME_V2.FONT
+      )
+      .setFontSize(12)
+      .setBold(true)
+      .setForegroundColor(
+        done
+          ? "#888888"
+          : "#111111"
+      )
+      .setStrikethrough(
+        done
+      )
+      .build();
+
+  const detailStyle =
+    SpreadsheetApp
+      .newTextStyle()
+      .setFontFamily(
+        HOME_V2.FONT
+      )
+      .setFontSize(9)
+      .setBold(false)
+      .setForegroundColor(
+        done
+          ? "#999999"
+          : "#555555"
+      )
+      .setStrikethrough(
+        done
+      )
+      .build();
+
+  const footnoteStyle =
+    SpreadsheetApp
+      .newTextStyle()
+      .setFontFamily(
+        HOME_V2.FONT
+      )
+      .setFontSize(8)
+      .setItalic(true)
+      .setForegroundColor(
+        done
+          ? "#A0A0A0"
+          : theme.mutedText
+      )
+      .setStrikethrough(
+        done
+      )
+      .build();
+
+  if (title) {
+    builder.setTextStyle(
+      0,
+      title.length,
+      titleStyle
+    );
+  }
+
+  details.forEach(
+    function (detail) {
+      const bulletText =
+        "  • " +
+        detail;
+
+      const start =
+        text.indexOf(
+          bulletText
+        );
+
+      if (start >= 0) {
+        builder.setTextStyle(
+          start,
+          start +
+            bulletText.length,
+          detailStyle
+        );
+      }
+    }
+  );
+
+  if (footnote) {
+    const footnoteText =
+      "  " +
+      footnote;
+
+    const start =
+      text.lastIndexOf(
+        footnoteText
+      );
+
+    if (start >= 0) {
+      builder.setTextStyle(
+        start,
+        start +
+          footnoteText.length,
+        footnoteStyle
+      );
+    }
+  }
+
+  return builder.build();
+}
+
+function buildHomeV2HeadlineStripItems_(
+  showState
+) {
+  const items = [];
+
+  const principalOuts =
+    getHomeV2PrincipalOuts_(
+      showState
+    );
+
+  const notesText =
+    normalizeHomeV2Notes_(
+      showState.notes
+    ).toUpperCase();
+
+  const performances =
+    getHomeV2Performances_(
+      showState
+    );
+
+  if (
+    performances.length > 1
+  ) {
+    items.push(
+      performances.length +
+      " Performances Today"
+    );
+  }
+
+  if (
+    principalOuts.length
+  ) {
+    items.push(
+      principalOuts.length +
+      " Principal Out" +
+      (
+        principalOuts.length === 1
+          ? ""
+          : "s"
+      )
+    );
+  }
+
+  if (
+    homeV2HasGuestSpeller_(
+      showState
+    )
+  ) {
+    items.push(
+      "Guest Speller"
+    );
+  }
+
+  if (
+    notesText.includes("PT")
+  ) {
+    items.push(
+      "PT Today"
+    );
+  }
+
+  if (
+    notesText.includes(
+      "OFFICE SHOW"
+    )
+  ) {
+    items.push(
+      "Office Show"
+    );
+  }
+
+  if (
+    notesText.includes(
+      "BRUSH-UP"
+    ) ||
+    notesText.includes(
+      "BRUSH UP"
+    )
+  ) {
+    items.push(
+      "Brush-Up"
+    );
+  }
+
+  const conductor =
+    getHomeConductorFromShowState_(
+      showState
+    );
+
+  if (conductor) {
+    items.push(
+      "Conductor: " +
+      conductor
+    );
+  }
+
+  return items;
+}
+
+function buildHomeTodayTasks_() {
+  const ctx =
+    getHomeTaskContext_();
+
+  const showState =
+    ctx.showState || {};
+
+  const tasks = [];
+
+  tasks.push({
+    id:
+      "PREP_INOUT",
+
+    title:
+      "Begin Performance Prep",
+
+    details: [
+      "IN/OUT Prepared",
+      "Performance Report Reset",
+      "Highlights Cleared",
+      "Schedules Reset",
+      "Payroll Updated*",
+      "U/S Tracker Updated*"
+    ],
+
+    footnote:
+      "*when applicable",
+
+    button:
+      "Begin",
+
+    action:
+      "homeButtonPrepInOut"
+  });
+
+  /*
+   * Export / distribute remains its own action until the
+   * full Prep pipeline explicitly owns the PDF workflow.
+   */
+  tasks.push({
+    id:
+      "INOUT_DISTRIBUTED",
+
+    title:
+      "Export / Print / Distribute IN/OUT",
+
+    button:
+      "Export",
+
+    action:
+      "homeButtonExportInOutPdf"
+  });
+
+  if (
+    getHomeV2PrincipalOuts_(
+      showState
+    ).length
+  ) {
+    tasks.push({
+      id:
+        "INSERTS_TO_FOH",
+
+      title:
+        "FOH Inserts",
+
+      button:
+        "Mark",
+
+      action:
+        "homeButtonMarkInsertsToFOH"
+    });
+  }
+
+  tasks.push({
+    id:
+      "REPORT_EMAIL",
+
+    title:
+      "Draft Report Email",
+
+    button:
+      "Draft",
+
+    action:
+      "homeButtonDraftReport"
+  });
+
+  if (
+    homeV2HasGuestSpeller_(
+      showState
+    )
+  ) {
+    tasks.push({
+      id:
+        "GUEST_PACKET",
+
+      title:
+        "Guest Packet",
+
+      button:
+        "Prep",
+
+      action:
+        "homeButtonGuestSpellerPacket"
+    });
+  }
+
+  return tasks;
+}
+
+function getHomeV2TaskDisplay_(
+  task,
+  showState
+) {
+  task =
+    task || {};
+
+  if (
+    task.id ===
+    "INSERTS_TO_FOH"
+  ) {
+    return buildHomeV2InsertTaskDisplay_(
+      showState
+    );
+  }
+
+  if (
+    task.id ===
+    "GUEST_PACKET"
+  ) {
+    const guestName =
+      homeV2ExtractDisplayName_(
+        getHomeGuestSpellerFromShowState_(
+          showState
+        )
+      );
+
+    return {
+      title:
+        "Guest Packet",
+
+      details:
+        guestName
+          ? [guestName]
+          : [],
+
+      footnote:
+        ""
+    };
+  }
+
+  return {
+    title:
+      task.title ||
+      "",
+
+    details:
+      Array.isArray(
+        task.details
+      )
+        ? task.details
+        : [],
+
+    footnote:
+      task.footnote ||
+      ""
+  };
+}
+
+
+/*
+ * Compatibility wrapper for any older code that still
+ * expects a single task-title string.
+ */
+function getHomeV2TaskTitle_(
+  task,
+  showState
+) {
+  const display =
+    getHomeV2TaskDisplay_(
+      task,
+      showState
+    );
+
+  return [
+    display.title
+  ]
+    .concat(
+      display.details ||
+      []
+    )
+    .concat(
+      display.footnote
+        ? [display.footnote]
+        : []
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildHomeV2InsertTaskDisplay_(
+  showState
+) {
+  const principalOuts =
+    getHomeV2PrincipalOuts_(
+      showState
+    );
+
+  if (
+    !principalOuts.length
+  ) {
+    return {
+      title:
+        "FOH Inserts",
+
+      details:
+        [],
+
+      footnote:
+        ""
+    };
+  }
+
+  if (
+    principalOuts.length >= 3
+  ) {
+    return {
+      title:
+        "Today At Insert Packet",
+
+      details:
+        principalOuts.map(
+          function (item) {
+            item =
+              item || {};
+
+            const role =
+              item.role ||
+              item.Role ||
+              "Role";
+
+            const inn =
+              item.in ||
+              item.In ||
+              "TBD";
+
+            return (
+              role +
+              " = " +
+              inn
+            );
+          }
+        ),
+
+      footnote:
+        ""
+    };
+  }
+
+  return {
+    title:
+      "FOH Inserts",
+
+    details:
+      principalOuts.map(
+        function (item) {
+          item =
+            item || {};
+
+          const role =
+            item.role ||
+            item.Role ||
+            "Role";
+
+          const inn =
+            item.in ||
+            item.In ||
+            "TBD";
+
+          return (
+            role +
+            " = " +
+            inn
+          );
+        }
+      ),
+
+    footnote:
+      ""
+  };
+}
+
+
+/*
+ * Compatibility wrapper.
+ */
+function buildHomeV2InsertTaskTitle_(
+  showState
+) {
+  const display =
+    buildHomeV2InsertTaskDisplay_(
+      showState
+    );
+
+  return [
+    display.title
+  ]
+    .concat(
+      display.details ||
+      []
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+/*************************************************
+ * CHUNK 7 — TIMELINE ITEMS FROM NOTES
+ * Version: 0.3.4
+ *************************************************/
+
+function getHomeV2TimelineEvents_(
+  timeline,
+  showState
+) {
+  const raw =
+    timeline &&
+    Array.isArray(
+      timeline.displayEvents
+    )
+      ? timeline.displayEvents
+      : (
+          timeline &&
+          Array.isArray(
+            timeline.events
+          )
+            ? timeline.events
+            : []
+        );
+
+  /*
+   * TimelineOS is now the only source for the
+   * right-side operational timeline.
+   *
+   * Do not recreate rehearsal or PT events from
+   * showState.notes. Structured ShowState activities
+   * create the left-side Schedule Blocks, while
+   * TimelineOS supplies the right-side call sequence.
+   */
+  return raw
+    .filter(
+      function (event) {
+        event =
+          event || {};
+
+        const title =
+          String(
+            event.title || ""
+          )
+            .toLowerCase()
+            .trim();
+
+        if (
+          title === "15 minutes"
+        ) {
+          return false;
+        }
+
+        if (
+          title === "10 minutes"
+        ) {
+          return false;
+        }
+
+        if (
+          title === "5 minutes"
+        ) {
+          return false;
+        }
+
+        if (
+          title === "places"
+        ) {
+          return false;
+        }
+
+        return true;
+      }
+    )
+    .sort(
+      function (a, b) {
+        const aSort =
+          getHomeV2TimelineSortValue_(
+            a
+          );
+
+        const bSort =
+          getHomeV2TimelineSortValue_(
+            b
+          );
+
+        return (
+          aSort -
+          bSort
+        );
+      }
+    );
+}
+
+function getHomeV2ScheduleEventsFromNotes_(showState) {
+  const notes = normalizeHomeV2Notes_(showState && showState.notes);
+  if (!notes) return [];
+
+  const lines = notes
+    .split(/\n+/)
+    .map(function (line) {
+      return String(line || "").replace(/^[-•]\s*/, "").trim();
+    })
+    .filter(Boolean);
+
+  const events = [];
+
+  lines.forEach(function (line) {
+    const upper = line.toUpperCase();
+
+    // Press stays in Notes for now unless we build location intelligence later.
+    if (upper.includes("PRESS") || upper.includes("FILMING")) {
+      return;
+    }
+
+    if (isHomeV2PTLine_(line)) {
+      events.push(buildHomeV2NoteTimelineEvent_(line, "PT", "PT"));
+      return;
+    }
+
+    if (isHomeV2RehearsalLine_(line)) {
+      events.push(buildHomeV2NoteTimelineEvent_(line, "Rehearsal", getHomeV2RehearsalTimelineTitle_(line)));
+      return;
+    }
+  });
+
+  return events.filter(function (event) {
+    return event && (event.timeText || event.title);
+  });
+}
+
+function isHomeV2PTLine_(line) {
+  const upper = String(line || "").toUpperCase();
+
+  return (
+    upper.includes("PT ") ||
+    upper.startsWith("PT") ||
+    upper.includes("PHYSICAL THERAPY")
+  );
+}
+
+function isHomeV2RehearsalLine_(line) {
+  const upper = String(line || "").toUpperCase();
+
+  return (
+    upper.includes("REHEARSAL") ||
+    upper.includes("BRUSH-UP") ||
+    upper.includes("BRUSH UP") ||
+    upper.includes("PUT-IN") ||
+    upper.includes("PUT IN") ||
+    upper.includes("UNDERSTUDY")
+  );
+}
+
+function getHomeV2RehearsalTimelineTitle_(line) {
+  const upper = String(line || "").toUpperCase();
+
+  if (upper.includes("BRUSH-UP") || upper.includes("BRUSH UP")) {
+    return "Brush-Up";
+  }
+
+  if (upper.includes("PUT-IN") || upper.includes("PUT IN")) {
+    return "Put-In";
+  }
+
+  if (upper.includes("UNDERSTUDY")) {
+    return "Understudy Rehearsal";
+  }
+
+  return "Rehearsal";
+}
+
+function buildHomeV2NoteTimelineEvent_(line, category, title) {
+  const timeInfo = extractHomeV2TimeRange_(line);
+  const location = extractHomeV2Location_(line);
+  const date = getHomeV2SelectedDate_();
+
+  return {
+    source: "Home Notes",
+    category: category,
+    title: title,
+    appliesTo: location || "",
+    timeText: timeInfo.startText || "",
+    endTimeText: timeInfo.endText || "",
+    time: timeInfo.startText && date
+      ? buildHomeV2DateTimeFromText_(date, timeInfo.startText)
+      : null,
+    displayOnDashboard: true,
+    originalText: line
+  };
+}
+
+function getHomeV2SelectedDate_() {
+  const ss = SpreadsheetApp.getActive();
+  const inOut = ss.getSheetByName("IN/OUT");
+  if (!inOut) return null;
+
+  const value = inOut.getRange("A3").getValue();
+
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return value;
+  }
+
+  const display = inOut.getRange("A3").getDisplayValue();
+
+  if (typeof parseInOutDate_ === "function") {
+    return parseInOutDate_(display);
+  }
+
+  const parsed = new Date(display);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function buildHomeV2DateTimeFromText_(date, timeText) {
+  if (!(date instanceof Date)) return null;
+
+  const text = String(timeText || "").trim().toUpperCase();
+  const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
+
+  if (!match) return null;
+
+  let hour = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const ampm = String(match[3] || "").toUpperCase();
+
+  if (ampm === "PM" && hour !== 12) hour += 12;
+  if (ampm === "AM" && hour === 12) hour = 0;
+
+  const result = new Date(date);
+  result.setHours(hour, minute, 0, 0);
+
+  return result;
+}
+
+function extractHomeV2TimeRange_(line) {
+  const text = String(line || "");
+
+  const rangeMatch = text.match(
+    /(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)/i
+  );
+
+  if (rangeMatch) {
+    return {
+      startText: normalizeHomeV2TimeText_(rangeMatch[1]),
+      endText: normalizeHomeV2TimeText_(rangeMatch[2])
+    };
+  }
+
+  const singleMatch = text.match(/(\d{1,2}(?::\d{2})?\s*(?:AM|PM))/i);
+
+  if (singleMatch) {
+    return {
+      startText: normalizeHomeV2TimeText_(singleMatch[1]),
+      endText: ""
+    };
+  }
+
+  return {
+    startText: "",
+    endText: ""
+  };
+}
+
+function normalizeHomeV2TimeText_(value) {
+  let text = String(value || "").trim().toUpperCase().replace(/\s+/g, " ");
+
+  const match = text.match(/^(\d{1,2})(AM|PM)$/i);
+  if (match) {
+    text = match[1] + ":00 " + match[2].toUpperCase();
+  }
+
+  const match2 = text.match(/^(\d{1,2})\s+(AM|PM)$/i);
+  if (match2) {
+    text = match2[1] + ":00 " + match2[2].toUpperCase();
+  }
+
+  return text;
+}
+
+function extractHomeV2Location_(line) {
+  const text = String(line || "");
+
+  const paren = text.match(/\(([^)]+)\)/);
+  if (paren) return paren[1].trim();
+
+  const atMatch = text.match(/\bat\s+(.+)$/i);
+  if (atMatch) return atMatch[1].trim();
+
+  return "";
+}
+
+function getHomeV2TimelineSortValue_(event) {
+  if (event && event.time) {
+    return new Date(event.time).getTime();
+  }
+
+  return homeV2TimeSortValue_(event && event.timeText);
+}
+
+/*************************************************
+ * CHUNK 8 — LONG TERM + UPCOMING V2 BRIDGE
+ * Version: 0.3.5
+ *
+ * Keeps existing task/upcoming data logic,
+ * but routes through Home V2 styling.
+ *************************************************/
+
+function drawHomeV2LongTermAndUpcoming_(sh, row) {
+  row = drawHomeV2LongTermCard_(sh, row);
+  row = drawHomeV2UpcomingCard_(sh, row);
+
+  return row;
+}
+
+function drawHomeV2UtilitiesCard_(sh, row) {
+  const startRow = row;
+
+  row = drawHomeV2CardTitle_(
+    sh,
+    row,
+    HOME_V2.FULL_COL,
+    HOME_V2.FULL_WIDTH,
+    "UTILITIES"
+  );
+
+  const buttons = [
+  ["Export Calendar", "homeButtonExportCalendar"],
+  ["Add Cast Out", "homeButtonAddOut"],
+  ["Upload Receipt", "homeButtonUploadReceipt"],
+  ["Sync Gmail Receipts", "homeButtonSyncReceipts"],
+  ["Force Payroll Sync", "homeButtonRefreshPayroll"]
+];
+
+  buttons.forEach(function (item) {
+    sh.getRange(row, 1, 1, 6)
+      .merge()
+      .setValue(item[0])
+      .setFontSize(13)
+      .setFontWeight("bold")
+      .setHorizontalAlignment("left");
+
+    sh.getRange(row, 7)
+      .clearDataValidations()
+      .insertCheckboxes()
+      .setValue(false)
+      .setHorizontalAlignment("center")
+      .setNote("MISSION_ACTION:" + item[1]);
+
+    sh.getRange(row, 8, 1, 2)
+      .merge()
+      .setValue("Run")
+      .setFontSize(12)
+      .setFontWeight("bold")
+      .setFontColor(getHomeV2Theme_().primaryColor)
+      .setHorizontalAlignment("left");
+
+    sh.setRowHeight(row, 38);
+    row++;
+  });
+
+  fillHomeV2CardBody_(
+    sh,
+    startRow + 1,
+    HOME_V2.FULL_COL,
+    row - startRow - 1,
+    HOME_V2.FULL_WIDTH
+  );
+
+  styleHomeV2Card_(
+    sh,
+    startRow,
+    HOME_V2.FULL_COL,
+    row - startRow,
+    HOME_V2.FULL_WIDTH
+  );
+
+  return row + HOME_V2.GAP_ROWS;
+}
+
+function drawHomeV2UpcomingCard_FAST_(sh, row) {
+  const startRow = row;
+
+  row = drawHomeV2CardTitle_(
+    sh,
+    row,
+    HOME_V2.FULL_COL,
+    HOME_V2.FULL_WIDTH,
+    "UPCOMING"
+  );
+
+  row = drawHomeV2EmptyLine_(
+    sh,
+    row,
+    HOME_V2.FULL_COL,
+    HOME_V2.FULL_WIDTH,
+    "Upcoming temporarily cached/skipped for faster Home refresh."
+  );
+
+  styleHomeV2Card_(
+    sh,
+    startRow,
+    HOME_V2.FULL_COL,
+    row - startRow,
+    HOME_V2.FULL_WIDTH
+  );
+
+  return row + HOME_V2.GAP_ROWS;
+}
+
+/*************************************************
+ * LONG TERM TASKS
+ * Version: 3.0.0
+ * Status: ACTIVE
+ *
+ * Complete replacement chunk.
+ *
+ * Replace the entire current section beginning at:
+ *   LONG TERM TASKS
+ *
+ * Stop immediately before:
+ *   HOME V2 — AUTO TIMELINE REFRESH
+ *
+ * Layout:
+ * - Blue section header
+ * - Add Long-Term Task action directly beneath header
+ * - Open tasks listed below
+ * - Strong outside border with horizontal row dividers
+ *************************************************/
+
+
+/* =========================================================
+ * LONG-TERM TASK CARD
+ * ========================================================= */
+
+function drawHomeV2LongTermCard_(
+  sh,
+  row
+) {
+  const startRow =
+    row;
+
+  row =
+    drawHomeV2CardTitle_(
+      sh,
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.FULL_WIDTH,
+      "LONG TERM TASKS"
+    );
+
+  /*
+   * Add-task action belongs directly under the header,
+   * before the existing task list.
+   */
+  row =
+    drawHomeV2AddLongTermTaskRow_(
+      sh,
+      row
+    );
+
+  const tasks =
+    typeof getLongTermTasks_ ===
+      "function"
+      ? getLongTermTasks_()
+      : [];
+
+  if (!tasks.length) {
+    row =
+      drawHomeV2EmptyLine_(
+        sh,
+        row,
+        HOME_V2.FULL_COL,
+        HOME_V2.FULL_WIDTH,
+        "No open long-term tasks."
+      );
+  } else {
+    tasks
+      .slice(
+        0,
+        8
+      )
+      .forEach(
+        function (task) {
+          row =
+            drawHomeV2LongTermTaskRow_(
+              sh,
+              row,
+              task
+            );
+        }
+      );
+  }
+
+  fillHomeV2CardBody_(
+    sh,
+    startRow + 1,
+    HOME_V2.FULL_COL,
+    row - startRow - 1,
+    HOME_V2.FULL_WIDTH
+  );
+
+  /*
+   * Restore the lighter action background after the
+   * body fill.
+   */
+  sh.getRange(
+    startRow + 1,
+    HOME_V2.FULL_COL,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  styleHomeV2LongTermCard_(
+    sh,
+    startRow,
+    row - startRow
+  );
+
+  return (
+    row +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+
+/* =========================================================
+ * ADD TASK ACTION ROW
+ * ========================================================= */
+
+function drawHomeV2AddLongTermTaskRow_(
+  sh,
+  row
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  const runValidation =
+    SpreadsheetApp
+      .newDataValidation()
+      .requireValueInList(
+        ["▶ Run"],
+        true
+      )
+      .setAllowInvalid(false)
+      .build();
+
+  /*
+   * Action label.
+   */
+  sh.getRange(
+    row,
+    1,
+    1,
+    7
+  )
+    .merge()
+    .setValue(
+      "Add Long-Term Task"
+    )
+    .setFontSize(12)
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      "#111111"
+    )
+    .setHorizontalAlignment(
+      "left"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  /*
+   * RUN control.
+   */
+  sh.getRange(
+    row,
+    8,
+    1,
+    2
+  )
+    .merge()
+    .clearContent()
+    .clearDataValidations()
+    .setDataValidation(
+      runValidation
+    )
+    .setNote(
+      "MISSION_ACTION:" +
+      "homeButtonAddLongTermTask"
+    )
+    .setFontSize(11)
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      theme.primaryColor
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  sh.setRowHeight(
+    row,
+    36
+  );
+
+  return (
+    row + 1
+  );
+}
+
+
+/* =========================================================
+ * LONG-TERM TASK ROW
+ * ========================================================= */
+
+function drawHomeV2LongTermTaskRow_(
+  sh,
+  row,
+  task
+) {
+  task =
+    task || {};
+
+  const theme =
+    getHomeV2Theme_();
+
+  /*
+   * Completion checkbox.
+   */
+  sh.getRange(
+    row,
+    1
+  )
+    .clearDataValidations()
+    .insertCheckboxes()
+    .setValue(false)
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setNote(
+      "LONG_TERM_TASK_ROW:" +
+      task.sourceRow
+    )
+    .setBackground(
+      theme.cardColor
+    );
+
+  /*
+   * Structured task display.
+   */
+  sh.getRange(
+    row,
+    2,
+    1,
+    8
+  )
+    .merge()
+    .setRichTextValue(
+      buildHomeV2LongTermTaskRichText_(
+        task
+      )
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setHorizontalAlignment(
+      "left"
+    )
+    .setWrap(true)
+    .setBackground(
+      theme.cardColor
+    );
+
+  const hasDetails =
+    Boolean(
+      task.note ||
+      task.dueDate
+    );
+
+  sh.setRowHeight(
+    row,
+    hasDetails
+      ? 58
+      : 40
+  );
+
+  return (
+    row + 1
+  );
+}
+
+
+/* =========================================================
+ * TASK RICH TEXT
+ * ========================================================= */
+
+function buildHomeV2LongTermTaskRichText_(
+  task
+) {
+  task =
+    task || {};
+
+  const theme =
+    getHomeV2Theme_();
+
+  const title =
+    String(
+      task.task || ""
+    ).trim();
+
+  const due =
+    String(
+      task.dueDate || ""
+    ).trim();
+
+  const note =
+    String(
+      task.note || ""
+    ).trim();
+
+  const lines = [
+    title
+  ];
+
+  if (due) {
+    lines.push(
+      "Due: " +
+      due
+    );
+  }
+
+  if (note) {
+    lines.push(
+      note
+    );
+  }
+
+  const text =
+    lines.join(
+      "\n"
+    );
+
+  const builder =
+    SpreadsheetApp
+      .newRichTextValue()
+      .setText(
+        text
+      );
+
+  const titleStyle =
+    SpreadsheetApp
+      .newTextStyle()
+      .setFontFamily(
+        HOME_V2.FONT
+      )
+      .setFontSize(12)
+      .setBold(true)
+      .setForegroundColor(
+        "#111111"
+      )
+      .build();
+
+  const dueStyle =
+    SpreadsheetApp
+      .newTextStyle()
+      .setFontFamily(
+        HOME_V2.FONT
+      )
+      .setFontSize(9)
+      .setBold(true)
+      .setForegroundColor(
+        theme.primaryColor
+      )
+      .build();
+
+  const noteStyle =
+    SpreadsheetApp
+      .newTextStyle()
+      .setFontFamily(
+        HOME_V2.FONT
+      )
+      .setFontSize(9)
+      .setBold(false)
+      .setForegroundColor(
+        theme.mutedText
+      )
+      .build();
+
+  if (title) {
+    builder.setTextStyle(
+      0,
+      title.length,
+      titleStyle
+    );
+  }
+
+  if (due) {
+    const dueText =
+      "Due: " +
+      due;
+
+    const start =
+      text.indexOf(
+        dueText
+      );
+
+    if (start >= 0) {
+      builder.setTextStyle(
+        start,
+        start +
+          dueText.length,
+        dueStyle
+      );
+    }
+  }
+
+  if (note) {
+    const start =
+      text.lastIndexOf(
+        note
+      );
+
+    if (start >= 0) {
+      builder.setTextStyle(
+        start,
+        start +
+          note.length,
+        noteStyle
+      );
+    }
+  }
+
+  return builder.build();
+}
+
+
+/* =========================================================
+ * LONG-TERM CARD BORDERS
+ * ========================================================= */
+
+function styleHomeV2LongTermCard_(
+  sh,
+  startRow,
+  numRows
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  const range =
+    sh.getRange(
+      startRow,
+      HOME_V2.FULL_COL,
+      numRows,
+      HOME_V2.FULL_WIDTH
+    );
+
+  /*
+   * Remove inherited internal vertical rules.
+   */
+  range.setBorder(
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  );
+
+  /*
+   * Keep horizontal row separators.
+   */
+  range.setBorder(
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID
+  );
+
+  /*
+   * Strong outer frame.
+   */
+  range.setBorder(
+    true,
+    true,
+    true,
+    true,
+    null,
+    null,
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+  );
+
+  /*
+   * Strong divider below the blue title.
+   */
+  sh.getRange(
+    startRow,
+    HOME_V2.FULL_COL,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .setBorder(
+      null,
+      null,
+      true,
+      null,
+      false,
+      false,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+}
+
+/*************************************************
+ * HOME V2 — AUTO TIMELINE REFRESH
+ *************************************************/
+
+function installHomeTimelineAutoRefresh() {
+  removeHomeTimelineAutoRefresh();
+
+  ScriptApp.newTrigger("refreshHomeTimelineFromTrigger_")
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+
+  SpreadsheetApp.getUi().alert("Home timeline auto-refresh installed.");
+}
+
+function removeHomeTimelineAutoRefresh() {
+  const triggers = ScriptApp.getProjectTriggers();
+
+  triggers.forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === "refreshHomeTimelineFromTrigger_") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+}
+
+function refreshHomeTimelineFromTrigger_() {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName("Home");
+
+  if (!sh) return;
+
+  refreshStageOSDashboard_V2();
+}
+
+/*************************************************
+ * HOME V2 — BACKGROUND TIMELINE HIGHLIGHT
+ *
+ * Updates only the timeline row formatting.
+ * Does not rebuild Home.
+ * Does not activate Home.
+ * Does not move the user's selection.
+ *************************************************/
+
+function installHomeTimelineHighlightTrigger() {
+  removeHomeTimelineHighlightTrigger();
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  PropertiesService.getScriptProperties()
+    .setProperty("HOME_TIMELINE_SPREADSHEET_ID", ss.getId());
+
+  ScriptApp.newTrigger("refreshHomeTimelineHighlightFromTrigger_")
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+
+  SpreadsheetApp.getUi().alert(
+    "Home timeline background updater installed.\n\n" +
+    "It will update the Home timeline approximately once per minute " +
+    "without switching tabs or interrupting your work."
+  );
+}
+
+function removeHomeTimelineHighlightTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (
+      trigger.getHandlerFunction() ===
+      "refreshHomeTimelineHighlightFromTrigger_"
+    ) {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+}
+
+function refreshHomeTimelineHighlightFromTrigger_() {
+  const spreadsheetId = PropertiesService
+    .getScriptProperties()
+    .getProperty("HOME_TIMELINE_SPREADSHEET_ID");
+
+  if (!spreadsheetId) return;
+
+  const ss = SpreadsheetApp.openById(spreadsheetId);
+  const home = ss.getSheetByName("Home");
+  const inOut = ss.getSheetByName("IN/OUT");
+
+  if (!home || !inOut) return;
+
+  refreshHomeTimelineHighlightOnly_(home, inOut);
+}
+
+function refreshHomeTimelineHighlightOnly_(home, inOut) {
+  const selectedDate = homeV2ReadSelectedDateForTrigger_(inOut);
+  if (!selectedDate) return;
+
+  const now = new Date(selectedDate);
+  const realNow = new Date();
+
+  now.setHours(
+    realNow.getHours(),
+    realNow.getMinutes(),
+    realNow.getSeconds(),
+    realNow.getMilliseconds()
+  );
+
+  const timeline = homeV2FindTimelineRows_(home);
+  if (!timeline.rows.length) return;
+
+  const timedRows = timeline.rows
+    .map(function (rowInfo) {
+      const eventTime = homeV2BuildTimelineDateTime_(
+        selectedDate,
+        rowInfo.timeText
+      );
+
+      return {
+        row: rowInfo.row,
+        timeText: rowInfo.timeText,
+        time: eventTime
+      };
+    })
+    .filter(function (item) {
+      return item.time instanceof Date && !isNaN(item.time.getTime());
+    })
+    .sort(function (a, b) {
+      return a.time.getTime() - b.time.getTime();
+    });
+
+  if (!timedRows.length) return;
+
+  let activeTime = null;
+
+  timedRows.forEach(function (item) {
+    if (item.time.getTime() <= now.getTime()) {
+      activeTime = item.time.getTime();
+    }
+  });
+
+  timedRows.forEach(function (item) {
+    const range = home.getRange(item.row, 6, 1, 4);
+    const itemTime = item.time.getTime();
+
+    if (activeTime !== null && itemTime === activeTime) {
+      // Current event
+      range
+        .setBackground(HOME_V2.DEFAULT_SECONDARY)
+        .setFontColor("#111111")
+        .setFontWeight("bold");
+
+    } else if (itemTime < now.getTime()) {
+      // Past event
+      range
+        .setBackground(HOME_V2.DEFAULT_PAST_BG)
+        .setFontColor("#999999")
+        .setFontWeight("normal");
+
+    } else {
+      // Future event
+      range
+        .setBackground("#FFFFFF")
+        .setFontColor("#111111")
+        .setFontWeight("normal");
+    }
+  });
+}
+
+function homeV2FindTimelineRows_(home) {
+  const lastRow = Math.min(home.getLastRow(), HOME_V2.MAX_ROWS);
+  if (lastRow < 2) return { headerRow: 0, rows: [] };
+
+  const values = home
+    .getRange(1, 6, lastRow, 4)
+    .getDisplayValues();
+
+  let headerIndex = -1;
+
+  for (let i = 0; i < values.length; i++) {
+    const timeHeader = String(values[i][0] || "")
+      .trim()
+      .toUpperCase();
+
+    const eventHeader = String(values[i][1] || "")
+      .trim()
+      .toUpperCase();
+
+    const whoHeader = String(values[i][3] || "")
+      .trim()
+      .toUpperCase();
+
+    if (
+      timeHeader === "TIME" &&
+      eventHeader === "EVENT" &&
+      whoHeader === "WHO"
+    ) {
+      headerIndex = i;
+      break;
+    }
+  }
+
+  if (headerIndex === -1) {
+    return { headerRow: 0, rows: [] };
+  }
+
+  const rows = [];
+
+  for (let i = headerIndex + 1; i < values.length; i++) {
+    const timeText = String(values[i][0] || "").trim();
+    const eventText = String(values[i][1] || "").trim();
+    const whoText = String(values[i][3] || "").trim();
+
+    // Timeline ends at the first fully blank row.
+    if (!timeText && !eventText && !whoText) {
+      break;
+    }
+
+    // Ignore anything that is not a timed timeline entry.
+    if (!timeText) continue;
+
+    rows.push({
+      row: i + 1,
+      timeText: timeText
+    });
+  }
+
+  return {
+    headerRow: headerIndex + 1,
+    rows: rows
+  };
+}
+
+function homeV2ReadSelectedDateForTrigger_(inOut) {
+  const value = inOut.getRange("A3").getValue();
+
+  if (
+    Object.prototype.toString.call(value) === "[object Date]" &&
+    !isNaN(value.getTime())
+  ) {
+    return new Date(
+      value.getFullYear(),
+      value.getMonth(),
+      value.getDate()
+    );
+  }
+
+  const display = String(
+    inOut.getRange("A3").getDisplayValue() || ""
+  ).trim();
+
+  if (!display) return null;
+
+  const parsed = new Date(display);
+  if (isNaN(parsed.getTime())) return null;
+
+  return new Date(
+    parsed.getFullYear(),
+    parsed.getMonth(),
+    parsed.getDate()
+  );
+}
+
+function homeV2BuildTimelineDateTime_(date, timeText) {
+  if (!(date instanceof Date)) return null;
+
+  const text = String(timeText || "")
+    .trim()
+    .toUpperCase();
+
+  const match = text.match(
+    /^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/
+  );
+
+  if (!match) return null;
+
+  let hour = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const ampm = String(match[3] || "").toUpperCase();
+
+  if (ampm === "PM" && hour !== 12) hour += 12;
+  if (ampm === "AM" && hour === 12) hour = 0;
+
+  const result = new Date(date);
+  result.setHours(hour, minute, 0, 0);
+
+  return result;
+}
+
+/*************************************************
+ * UPCOMING
+ * Version: 2.0.0
+ * Status: ACTIVE
+ *
+ * Complete replacement chunk.
+ *
+ * Replace the entire current section beginning at:
+ *   UPCOMING
+ *
+ * Stop immediately before:
+ *   EXPANDABLE UPCOMING PT ITEM
+ *
+ * Improvements:
+ * - Strong merged divider for every day
+ * - Smaller day-header rows
+ * - Blue background with white text
+ * - Horizontal item separators
+ * - No blank spacer row between days
+ * - Existing PT item renderer preserved
+ *************************************************/
+
+
+/* =========================================================
+ * UPCOMING CARD
+ * ========================================================= */
+
+function drawHomeV2UpcomingCard_(
+  sh,
+  row
+) {
+  const startRow =
+    row;
+
+  row =
+    drawHomeV2CardTitle_(
+      sh,
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.FULL_WIDTH,
+      "UPCOMING"
+    );
+
+  const upcoming =
+    typeof getDashboardUpcomingFromWeekly_ ===
+      "function"
+      ? getDashboardUpcomingFromWeekly_()
+      : [];
+
+  if (!upcoming.length) {
+    row =
+      drawHomeV2EmptyLine_(
+        sh,
+        row,
+        HOME_V2.FULL_COL,
+        HOME_V2.FULL_WIDTH,
+        "No upcoming items found."
+      );
+  } else {
+    upcoming
+      .slice(
+        0,
+        5
+      )
+      .forEach(
+        function (day) {
+          row =
+            drawHomeV2UpcomingDay_(
+              sh,
+              row,
+              day
+            );
+        }
+      );
+  }
+
+  styleHomeV2UpcomingCard_(
+    sh,
+    startRow,
+    row - startRow
+  );
+
+  return (
+    row +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+
+/* =========================================================
+ * UPCOMING DAY
+ * ========================================================= */
+
+function drawHomeV2UpcomingDay_(
+  sh,
+  row,
+  day
+) {
+  day =
+    day || {};
+
+  const theme =
+    getHomeV2Theme_();
+
+  /*
+   * Compact merged day divider.
+   */
+  sh.getRange(
+    row,
+    HOME_V2.FULL_COL,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .merge()
+    .setValue(
+      day.day || ""
+    )
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      "#FFFFFF"
+    )
+    .setFontSize(11)
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      theme.primaryColor
+    );
+
+  sh.setRowHeight(
+    row,
+    24
+  );
+
+  row++;
+
+  const items =
+    Array.isArray(
+      day.items
+    )
+      ? day.items
+      : [];
+
+  if (!items.length) {
+    sh.getRange(
+      row,
+      HOME_V2.FULL_COL,
+      1,
+      HOME_V2.FULL_WIDTH
+    )
+      .merge()
+      .setValue(
+        "No scheduled items."
+      )
+      .setFontSize(11)
+      .setFontColor(
+        theme.mutedText
+      )
+      .setHorizontalAlignment(
+        "center"
+      )
+      .setVerticalAlignment(
+        "middle"
+      )
+      .setBackground(
+        theme.cardColor
+      );
+
+    sh.setRowHeight(
+      row,
+      32
+    );
+
+    return (
+      row + 1
+    );
+  }
+
+  items.forEach(
+    function (item) {
+      item =
+        item || {};
+
+      /*
+       * Existing PT renderer remains the source of truth
+       * for compact PT rows.
+       */
+      if (
+        item.type ===
+        "pt"
+      ) {
+        row =
+          drawHomeV2UpcomingPTItem_(
+            sh,
+            row,
+            item,
+            theme
+          );
+
+        return;
+      }
+
+      /*
+       * Normal Upcoming item.
+       */
+      sh.getRange(
+        row,
+        1,
+        1,
+        2
+      )
+        .merge()
+        .setValue(
+          item.label || ""
+        )
+        .setFontSize(11)
+        .setFontWeight(
+          "bold"
+        )
+        .setHorizontalAlignment(
+          "center"
+        )
+        .setVerticalAlignment(
+          "middle"
+        )
+        .setBackground(
+          theme.cardColor
+        );
+
+      sh.getRange(
+        row,
+        3,
+        1,
+        7
+      )
+        .merge()
+        .setValue(
+          item.detail || ""
+        )
+        .setFontSize(12)
+        .setHorizontalAlignment(
+          "left"
+        )
+        .setVerticalAlignment(
+          "middle"
+        )
+        .setWrap(true)
+        .setBackground(
+          theme.cardColor
+        );
+
+      /*
+       * Horizontal divider beneath each item.
+       * No internal vertical gridlines.
+       */
+      sh.getRange(
+        row,
+        HOME_V2.FULL_COL,
+        1,
+        HOME_V2.FULL_WIDTH
+      )
+        .setBorder(
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          theme.borderColor,
+          SpreadsheetApp.BorderStyle.SOLID
+        );
+
+      sh.setRowHeight(
+        row,
+        String(
+          item.detail || ""
+        ).includes("\n")
+          ? 54
+          : 38
+      );
+
+      row++;
+    }
+  );
+
+  /*
+   * The next day's blue divider supplies the separation,
+   * so no empty spacer row is needed.
+   */
+  return row;
+}
+
+
+/*************************************************
+ * UPCOMING
+ * Version: 2.0.1
+ * Status: ACTIVE
+ *
+ * Complete replacement chunk.
+ *
+ * Replace the entire current section beginning at:
+ *   UPCOMING
+ *
+ * Stop immediately before:
+ *   EXPANDABLE UPCOMING PT ITEM
+ *
+ * Improvements:
+ * - Strong merged divider for every day
+ * - Smaller day-header rows
+ * - Blue background with white text
+ * - Horizontal item separators
+ * - No blank spacer row between days
+ * - Compact PT status rows are omitted from Upcoming
+ * - The separate NEXT PHYSICAL THERAPY card remains unchanged
+ *************************************************/
+
+
+/* =========================================================
+ * UPCOMING CARD
+ * ========================================================= */
+
+function drawHomeV2UpcomingCard_(
+  sh,
+  row
+) {
+  const startRow =
+    row;
+
+  row =
+    drawHomeV2CardTitle_(
+      sh,
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.FULL_WIDTH,
+      "UPCOMING"
+    );
+
+  const upcoming =
+    typeof getDashboardUpcomingFromWeekly_ ===
+      "function"
+      ? getDashboardUpcomingFromWeekly_()
+      : [];
+
+  if (!upcoming.length) {
+    row =
+      drawHomeV2EmptyLine_(
+        sh,
+        row,
+        HOME_V2.FULL_COL,
+        HOME_V2.FULL_WIDTH,
+        "No upcoming items found."
+      );
+  } else {
+    upcoming
+      .slice(
+        0,
+        5
+      )
+      .forEach(
+        function (day) {
+          row =
+            drawHomeV2UpcomingDay_(
+              sh,
+              row,
+              day
+            );
+        }
+      );
+  }
+
+  styleHomeV2UpcomingCard_(
+    sh,
+    startRow,
+    row - startRow
+  );
+
+  return (
+    row +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+
+/* =========================================================
+ * UPCOMING DAY
+ * ========================================================= */
+
+function drawHomeV2UpcomingDay_(
+  sh,
+  row,
+  day
+) {
+  day =
+    day || {};
+
+  const theme =
+    getHomeV2Theme_();
+
+  /*
+   * Compact merged day divider.
+   */
+  sh.getRange(
+    row,
+    HOME_V2.FULL_COL,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .merge()
+    .setValue(
+      day.day || ""
+    )
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      "#FFFFFF"
+    )
+    .setFontSize(11)
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      theme.primaryColor
+    );
+
+  sh.setRowHeight(
+    row,
+    24
+  );
+
+  row++;
+
+  const items =
+    Array.isArray(
+      day.items
+    )
+      ? day.items.filter(
+          function (item) {
+            /*
+             * PT schedule text already remains inside Notes.
+             * The separate NEXT PHYSICAL THERAPY card below
+             * Upcoming owns the detailed sign-up status.
+             */
+            return !(
+              item &&
+              item.type ===
+              "pt"
+            );
+          }
+        )
+      : [];
+
+  if (!items.length) {
+    sh.getRange(
+      row,
+      HOME_V2.FULL_COL,
+      1,
+      HOME_V2.FULL_WIDTH
+    )
+      .merge()
+      .setValue(
+        "No scheduled items."
+      )
+      .setFontSize(11)
+      .setFontColor(
+        theme.mutedText
+      )
+      .setHorizontalAlignment(
+        "center"
+      )
+      .setVerticalAlignment(
+        "middle"
+      )
+      .setBackground(
+        theme.cardColor
+      );
+
+    sh.setRowHeight(
+      row,
+      32
+    );
+
+    return (
+      row + 1
+    );
+  }
+
+  items.forEach(
+    function (item) {
+      item =
+        item || {};
+
+      /*
+       * Normal Upcoming item.
+       */
+      sh.getRange(
+        row,
+        1,
+        1,
+        2
+      )
+        .merge()
+        .setValue(
+          item.label || ""
+        )
+        .setFontSize(11)
+        .setFontWeight(
+          "bold"
+        )
+        .setHorizontalAlignment(
+          "center"
+        )
+        .setVerticalAlignment(
+          "middle"
+        )
+        .setBackground(
+          theme.cardColor
+        );
+
+      sh.getRange(
+        row,
+        3,
+        1,
+        7
+      )
+        .merge()
+        .setValue(
+          item.detail || ""
+        )
+        .setFontSize(12)
+        .setHorizontalAlignment(
+          "left"
+        )
+        .setVerticalAlignment(
+          "middle"
+        )
+        .setWrap(true)
+        .setBackground(
+          theme.cardColor
+        );
+
+      /*
+       * Horizontal divider beneath each item.
+       * No internal vertical gridlines.
+       */
+      sh.getRange(
+        row,
+        HOME_V2.FULL_COL,
+        1,
+        HOME_V2.FULL_WIDTH
+      )
+        .setBorder(
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          theme.borderColor,
+          SpreadsheetApp.BorderStyle.SOLID
+        );
+
+      sh.setRowHeight(
+        row,
+        String(
+          item.detail || ""
+        ).includes("\n")
+          ? 54
+          : 38
+      );
+
+      row++;
+    }
+  );
+
+  /*
+   * The next day's blue divider supplies the separation,
+   * so no empty spacer row is needed.
+   */
+  return row;
+}
+
+
+/* =========================================================
+ * UPCOMING CARD BORDERS
+ * ========================================================= */
+
+function styleHomeV2UpcomingCard_(
+  sh,
+  startRow,
+  numRows
+) {
+  if (
+    numRows <= 0
+  ) {
+    return;
+  }
+
+  const theme =
+    getHomeV2Theme_();
+
+  const range =
+    sh.getRange(
+      startRow,
+      HOME_V2.FULL_COL,
+      numRows,
+      HOME_V2.FULL_WIDTH
+    );
+
+  /*
+   * Clear inherited internal vertical gridlines.
+   */
+  range.setBorder(
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  );
+
+  /*
+   * Strong outside frame.
+   */
+  range.setBorder(
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+  );
+
+  /*
+   * Strong divider below the main UPCOMING title.
+   */
+  sh.getRange(
+    startRow,
+    HOME_V2.FULL_COL,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .setBorder(
+      null,
+      null,
+      true,
+      null,
+      false,
+      false,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+}
+
+/* =========================================================
+ * EXPANDABLE UPCOMING PT ITEM
+ * ========================================================= */
+
+function drawHomeV2UpcomingPTItem_(
+  sh,
+  row,
+  item,
+  theme
+) {
+  item =
+    item || {};
+
+  theme =
+    theme ||
+    getHomeV2Theme_();
+
+  const expanded =
+    Boolean(
+      item.expanded
+    );
+
+  /*
+   * Toggle checkbox
+   */
+  const toggle =
+    sh.getRange(
+      row,
+      1
+    );
+
+  toggle
+    .insertCheckboxes()
+    .setValue(
+      expanded
+    )
+    .setNote(
+      "PT_UPCOMING_TOGGLE:" +
+      (
+        item.dateKey ||
+        ""
+      )
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setBackground(
+      theme.cardColor
+    );
+
+  /*
+   * PT label
+   */
+  sh.getRange(
+    row,
+    2
+  )
+    .setValue(
+      "PT"
+    )
+    .setFontWeight(
+      "bold"
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setBackground(
+      theme.cardColor
+    );
+
+  /*
+   * Compact summary
+   */
+  sh.getRange(
+    row,
+    3,
+    1,
+    7
+  )
+    .merge()
+    .setValue(
+      (
+        expanded
+          ? "▼ "
+          : "▶ "
+      ) +
+      (
+        item.summary ||
+        ""
+      )
+    )
+    .setFontSize(13)
+    .setFontWeight(
+      "bold"
+    )
+    .setBackground(
+      theme.cardColor
+    );
+
+  sh.setRowHeight(
+    row,
+    38
+  );
+
+  row++;
+
+  if (!expanded) {
+    return row;
+  }
+
+  /*
+   * Expanded slot list
+   */
+  const slots =
+    Array.isArray(
+      item.slots
+    )
+      ? item.slots
+      : [];
+
+  slots.forEach(
+    function (slot) {
+      slot =
+        slot || {};
+
+      sh.getRange(
+        row,
+        2,
+        1,
+        2
+      )
+        .merge()
+        .setValue(
+          slot.timeText || ""
+        )
+        .setFontWeight(
+          "bold"
+        )
+        .setHorizontalAlignment(
+          "center"
+        )
+        .setBackground(
+          theme.cardColor
+        );
+
+      const appointment =
+        String(
+          slot.appointment || ""
+        ).trim();
+
+      sh.getRange(
+        row,
+        4,
+        1,
+        6
+      )
+        .merge()
+        .setValue(
+          appointment ||
+          "OPEN"
+        )
+        .setFontColor(
+          appointment
+            ? "#111111"
+            : theme.mutedText
+        )
+        .setFontStyle(
+          appointment
+            ? "normal"
+            : "italic"
+        )
+        .setBackground(
+          appointment
+            ? theme.cardColor
+            : "#FFF8E1"
+        );
+
+      sh.setRowHeight(
+        row,
+        32
+      );
+
+      row++;
+    }
+  );
+
+  return row;
+}
+
+/*************************************************
+ * HOME V2 — OPERATIONS UTILITIES
+ * Version: 2.0.0
+ * Status: ACTIVE
+ *
+ * Replace the current Utilities section containing:
+ * - drawHomeV2UtilitiesCard_
+ * - drawHomeV2UtilityRow_
+ * - any old utility-button array/helper used only here
+ *
+ * Stop before the next major section header.
+ *
+ * Visual language matches Today's Tasks:
+ * DONE | TASK | RUN
+ *
+ * Operations included:
+ * - Export Calendar
+ * - Add Cast Out
+ * - Upload Receipt
+ * - Sync Gmail Receipts
+ *************************************************/
+
+
+/* =========================================================
+ * UTILITIES CARD
+ * ========================================================= */
+
+function drawHomeV2UtilitiesCard_(
+  sh,
+  row
+) {
+  const startRow =
+    row;
+
+  row =
+    drawHomeV2CardTitle_(
+      sh,
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.FULL_WIDTH,
+      "UTILITIES"
+    );
+
+  drawHomeV2UtilityHeaders_(
+    sh,
+    row
+  );
+
+  row++;
+
+  const utilities =
+    buildHomeV2OperationsUtilities_();
+
+  utilities.forEach(
+    function (utility) {
+      row =
+        drawHomeV2UtilityRow_(
+          sh,
+          row,
+          utility
+        );
+    }
+  );
+
+  fillHomeV2CardBody_(
+    sh,
+    startRow + 1,
+    HOME_V2.FULL_COL,
+    row - startRow - 1,
+    HOME_V2.FULL_WIDTH
+  );
+
+  /*
+   * Restore the light RUN-column background after
+   * filling the full card body.
+   */
+  sh.getRange(
+    startRow + 1,
+    9,
+    row - startRow - 1,
+    1
+  )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  styleHomeV2UtilityCard_(
+    sh,
+    startRow,
+    row - startRow
+  );
+
+  return (
+    row +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+
+/* =========================================================
+ * OPERATIONS LIST
+ * ========================================================= */
+
+function buildHomeV2OperationsUtilities_() {
+  return [
+    {
+      id: "UTILITY_EXPORT_CALENDAR",
+      title: "Export Calendar",
+      action: "homeButtonExportCalendar"
+    },
+    {
+      id: "UTILITY_ADD_CAST_OUT",
+      title: "Add Cast Out",
+      action: "homeButtonAddOut"
+    },
+    {
+      id: "UTILITY_UPLOAD_RECEIPT",
+      title: "Upload Receipt",
+      action: "homeButtonUploadReceipt"
+    },
+    {
+      id: "UTILITY_SYNC_GMAIL_RECEIPTS",
+      title: "Sync Gmail Receipts",
+      action: "homeButtonSyncGmailReceipts"
+    },
+
+    // NEW
+    {
+      id: "UTILITY_REFRESH_PAYROLL",
+      title: "Refresh Payroll",
+      action: "homeButtonRefreshPayroll"
+    }
+  ];
+}
+
+/* =========================================================
+ * DONE | TASK | RUN HEADERS
+ * ========================================================= */
+
+function drawHomeV2UtilityHeaders_(
+  sh,
+  row
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  sh.getRange(
+    row,
+    1
+  )
+    .setValue(
+      "DONE"
+    )
+    .setFontSize(9)
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      theme.mutedText
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  sh.getRange(
+    row,
+    2,
+    1,
+    7
+  )
+    .merge()
+    .setValue(
+      "TASK"
+    )
+    .setFontSize(9)
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      theme.mutedText
+    )
+    .setHorizontalAlignment(
+      "left"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  sh.getRange(
+    row,
+    9
+  )
+    .setValue(
+      "RUN"
+    )
+    .setFontSize(9)
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      theme.mutedText
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  sh.setRowHeight(
+    row,
+    24
+  );
+}
+
+
+/* =========================================================
+ * UTILITY ROW
+ * ========================================================= */
+
+function drawHomeV2UtilityRow_(
+  sh,
+  row,
+  utility
+) {
+  utility =
+    utility || {};
+
+  const theme =
+    getHomeV2Theme_();
+
+  const done =
+    workflowStatusIsDoneFast_(
+      utility.id
+    );
+
+  const runValidation =
+    SpreadsheetApp
+      .newDataValidation()
+      .requireValueInList(
+        ["▶ Run"],
+        true
+      )
+      .setAllowInvalid(false)
+      .build();
+
+  /*
+   * DONE CHECKBOX
+   */
+  sh.getRange(
+    row,
+    1
+  )
+    .clearContent()
+    .clearDataValidations()
+    .insertCheckboxes()
+    .setValue(
+      done
+    )
+    .setNote(
+      "WORKFLOW_TASK:" +
+      utility.id
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      theme.cardColor
+    );
+
+  /*
+   * UTILITY NAME
+   */
+  sh.getRange(
+    row,
+    2,
+    1,
+    7
+  )
+    .merge()
+    .setValue(
+      utility.title ||
+      ""
+    )
+    .setFontSize(12)
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      done
+        ? "#888888"
+        : "#111111"
+    )
+    .setFontLine(
+      done
+        ? "line-through"
+        : "none"
+    )
+    .setHorizontalAlignment(
+      "left"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      theme.cardColor
+    );
+
+  /*
+   * RUN DROPDOWN
+   */
+  sh.getRange(
+    row,
+    9
+  )
+    .clearContent()
+    .clearDataValidations()
+    .setDataValidation(
+      runValidation
+    )
+    .setNote(
+      "MISSION_ACTION:" +
+      utility.action
+    )
+    .setFontSize(11)
+    .setFontWeight(
+      "bold"
+    )
+    .setFontColor(
+      theme.primaryColor
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setBackground(
+      "#F6F8FC"
+    );
+
+  sh.setRowHeight(
+    row,
+    40
+  );
+
+  return (
+    row + 1
+  );
+}
+
+
+/* =========================================================
+ * UTILITY CARD BORDERS
+ * ========================================================= */
+
+function styleHomeV2UtilityCard_(
+  sh,
+  startRow,
+  numRows
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  const range =
+    sh.getRange(
+      startRow,
+      HOME_V2.FULL_COL,
+      numRows,
+      HOME_V2.FULL_WIDTH
+    );
+
+  /*
+   * Remove inherited internal gridlines.
+   */
+  range.setBorder(
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  );
+
+  /*
+   * Keep horizontal row dividers only.
+   */
+  range.setBorder(
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID
+  );
+
+  /*
+   * Strong outside frame.
+   */
+  range.setBorder(
+    true,
+    true,
+    true,
+    true,
+    null,
+    null,
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+  );
+
+  /*
+   * Strong divider beneath blue title row.
+   */
+  sh.getRange(
+    startRow,
+    HOME_V2.FULL_COL,
+    1,
+    HOME_V2.FULL_WIDTH
+  )
+    .setBorder(
+      null,
+      null,
+      true,
+      null,
+      false,
+      false,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+}
+
+/*************************************************
+ * HOME V2 DEBUG HELPERS
+ *************************************************/
+
+function testHomeV2TimelineEvents_DEV() {
+  const ctx = buildHomeContext_();
+  const events = getHomeV2TimelineEvents_(ctx.timeline, ctx.showState);
+
+  Logger.log("HOME V2 TIMELINE EVENTS");
+  events.forEach(function (event, index) {
+    Logger.log(
+      index + 1 + ". " +
+      (event.timeText || "") + " | " +
+      (event.category || "") + " | " +
+      (formatHomeV2TimelineTitle_(event) || "") + " | " +
+      (formatHomeV2TimelineWho_(event) || "")
+    );
+  });
+
+  return events;
+}
+
+function testHomeV2CompanyLines_DEV() {
+  const ctx = buildHomeContext_();
+  const lines = buildHomeV2TodayCompanyLines_(ctx.showState);
+
+  Logger.log("HOME V2 COMPANY LINES");
+  lines.forEach(function (line, index) {
+    Logger.log((index + 1) + ". " + line);
+  });
+
+  return lines;
+}
+
+function testHomeV2Headline_DEV() {
+  const ctx = buildHomeContext_();
+  const items = buildHomeV2HeadlineStripItems_(ctx.showState);
+
+  Logger.log("HOME V2 HEADLINE ITEMS");
+  Logger.log(items.join(" • "));
+
+  return items;
+}
+
+/*************************************************
+ * HOME V2 HEALTH CHECK
+ *************************************************/
+
+function testHomeV2HealthCheck_DEV() {
+  const ctx = buildHomeContext_();
+  const showState = ctx.showState || {};
+  const timeline = ctx.timeline || {};
+
+  const results = {
+    date: showState.prettyDate || showState.date || "",
+    performances: getHomeV2Performances_(showState).length,
+    timelineEvents: getHomeV2TimelineEvents_(timeline, showState).length,
+    companyLines: buildHomeV2TodayCompanyLines_(showState).length,
+    headlineItems: buildHomeV2HeadlineStripItems_(showState).length,
+    notesPresent: !!normalizeHomeV2Notes_(showState.notes),
+    guestSpeller: String(getHomeGuestSpellerFromShowState_(showState).name || getHomeGuestSpellerFromShowState_(showState) || ""),
+    conductor: getHomeConductorFromShowState_(showState) || ""
+  };
+
+  Logger.log("HOME V2 HEALTH CHECK");
+  Logger.log(JSON.stringify(results, null, 2));
+
+  return results;
+}
+
+function testHomeV2DuplicateFunctionNames_DEV() {
+  const ss = SpreadsheetApp.getActive();
+  const files = [
+    "06v HOMEOS V2 LAYOUT"
+  ];
+
+  Logger.log("HOME V2 DUPLICATE FUNCTION CHECK");
+  Logger.log("Apps Script does not expose project source directly.");
+  Logger.log("Manual check needed only if duplicates were pasted into this file.");
+
+  return "Manual duplicate check complete.";
+}
+
+function testHomeV2TimelineAt500_DEV() {
+  setHomeV2TimelineTestTime_DEV("5:00 PM");
+}
+
+function testHomeV2TimelineAt530_DEV() {
+  setHomeV2TimelineTestTime_DEV("5:30 PM");
+}
+
+function testHomeV2TimelineAt630_DEV() {
+  setHomeV2TimelineTestTime_DEV("6:30 PM");
+}
+
+function testHomeV2TimelineAt700_DEV() {
+  setHomeV2TimelineTestTime_DEV("7:00 PM");
+}
+
+function testHomeV2TimelineCycle_DEV() {
+  const times = ["5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "6:55 PM", "7:00 PM"];
+
+  Logger.log("HOME V2 TIMELINE TEST TIMES");
+  times.forEach(function (time) {
+    Logger.log("- " + time);
+  });
+
+  SpreadsheetApp.getUi().alert(
+    "Timeline test helpers available:\n\n" +
+    "testHomeV2TimelineAt500_DEV()\n" +
+    "testHomeV2TimelineAt530_DEV()\n" +
+    "testHomeV2TimelineAt630_DEV()\n" +
+    "testHomeV2TimelineAt700_DEV()\n\n" +
+    "Run clearHomeV2TimelineTestTime_DEV() to return to real time."
+  );
+}
+
+/*************************************************
+ * HOME V2 — SAFE BUTTON HANDLERS
+ *************************************************/
+
+function homeButtonAddOut() {
+  if (typeof launchNewOutWizard === "function") {
+    launchNewOutWizard();
+    return;
+  }
+
+  SpreadsheetApp.getUi().alert("New Out Wizard function not found.");
+}
+
+function homeButtonExportCalendar() {
+  if (typeof exportProductionCalendarCustomRange === "function") {
+    exportProductionCalendarCustomRange();
+    return;
+  }
+
+  if (typeof exportRemainingProductionCalendarMonths === "function") {
+    exportRemainingProductionCalendarMonths();
+    return;
+  }
+
+  if (typeof exportCurrentProductionCalendarMonth === "function") {
+    exportCurrentProductionCalendarMonth();
+    return;
+  }
+
+  SpreadsheetApp.getUi().alert("Calendar export function not found.");
+}
+
+function homeButtonGuestSpellerEmail() {
+  if (typeof draftGuestSpellerEmail === "function") {
+    draftGuestSpellerEmail();
+    return;
+  }
+
+  if (typeof showGuestSpellerDialog === "function") {
+    showGuestSpellerDialog();
+    return;
+  }
+
+  SpreadsheetApp.getUi().alert("Guest Speller Email function not found.");
+}
+
+function homeButtonAddLongTermTask() {
+  showHomeV2AddLongTermTaskDialog_();
+}
+
+/*************************************************
+ * HOME V2 — ADD LONG-TERM TASK
+ *************************************************/
+
+function showHomeV2AddLongTermTaskDialog_() {
+  const html = HtmlService
+    .createHtmlOutput(homeV2LongTermTaskDialogHtml_())
+    .setWidth(520)
+    .setHeight(440);
+
+  SpreadsheetApp.getUi().showModalDialog(html, "Add Long-Term Task");
+}
+
+function testHomeV2LiveCompanyFromInOut_DEV() {
+  const rows = buildHomeV2TodayCompanyObjectsFromInOut_();
+
+  Logger.log("LIVE HOME COMPANY FROM IN/OUT");
+  Logger.log(JSON.stringify(rows, null, 2));
+
+  return rows;
+}
+
+function homeV2AddLongTermTask(payload) {
+  payload = payload || {};
+
+  const task = String(payload.task || "").trim();
+  const dueDate = String(payload.dueDate || "").trim();
+  const note = String(payload.note || "").trim();
+
+  if (!task) {
+    throw new Error("Task is required.");
+  }
+
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName("Long-Term Tasks") || ss.insertSheet("Long-Term Tasks");
+
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, 4).setValues([[
+      "Task",
+      "Due Date",
+      "Note",
+      "Status"
+    ]]);
+  }
+
+  sh.appendRow([
+    task,
+    dueDate,
+    note,
+    "Open"
+  ]);
+
+  refreshStageOSDashboard_V2();
+
+  return {
+    success: true,
+    message: "Long-term task added."
+  };
+}
+
+function homeV2LongTermTaskDialogHtml_() {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: Arial, sans-serif; background:#f6f4ef; margin:0; color:#1f1f1f; }
+    header { background:#17130F; color:white; padding:22px; text-align:center; }
+    h1 { margin:0; font-size:26px; }
+    main { padding:20px; }
+    label { display:block; font-size:12px; font-weight:900; color:#6f6a61; text-transform:uppercase; margin:12px 0 6px; }
+    input, textarea { width:100%; box-sizing:border-box; padding:10px; border:1px solid #ded8cc; border-radius:10px; font-family:Arial; font-size:14px; }
+    textarea { min-height:90px; resize:vertical; }
+    .actions { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid #ded8cc; }
+    button { border:0; border-radius:10px; padding:10px 14px; font-weight:900; cursor:pointer; background:#b58b2b; color:white; }
+    button.secondary { background:#504a42; }
+    #status { margin-right:auto; align-self:center; font-weight:800; color:#1f4f91; }
+  </style>
+</head>
+<body>
+  <header><h1>Add Long-Term Task</h1></header>
+  <main>
+    <label>Task</label>
+    <input id="task">
+
+    <label>Due Date</label>
+    <input id="dueDate" type="date">
+
+    <label>Note</label>
+    <textarea id="note"></textarea>
+  </main>
+
+  <div class="actions">
+    <div id="status"></div>
+    <button class="secondary" onclick="google.script.host.close()">Cancel</button>
+    <button onclick="submitTask()">Add Task</button>
+  </div>
+
+  <script>
+    function submitTask() {
+      const payload = {
+        task: document.getElementById("task").value,
+        dueDate: document.getElementById("dueDate").value,
+        note: document.getElementById("note").value
+      };
+
+      document.getElementById("status").textContent = "Adding...";
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          document.getElementById("status").textContent =
+            result && result.message ? result.message : "Added.";
+          setTimeout(function(){ google.script.host.close(); }, 500);
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById("status").textContent = "Error: " + error.message;
+        })
+        .homeV2AddLongTermTask(payload);
+    }
+  </script>
+</body>
+</html>`;
+}
+
+/*************************************************
+ * HOME V2 CANONICAL ENTRYPOINT
+ * Version: 1.0.0
+ *************************************************/
+
+function refreshStageOSDashboard_HOMEV2() {
+  return refreshStageOSDashboard_V2();
+}
+
+function refreshHome_PROFILE() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(HOME_V2.SHEET_NAME);
+
+  if (!sh) {
+    sh = ss.insertSheet(HOME_V2.SHEET_NAME, 0);
+  }
+
+  let t = Date.now();
+  function mark(label) {
+    Logger.log(label + ": " + (Date.now() - t) + "ms");
+    t = Date.now();
+  }
+
+  const ctx = buildHomeContext_();
+  const showState = ctx.showState || {};
+  const timeline = ctx.timeline || {};
+  mark("Build Home Context");
+
+  setupHomeV2Sheet_(sh);
+  mark("Setup Sheet");
+
+  let row = 1;
+
+  row = drawHomeV2Hero_(sh, row, showState);
+  mark("Hero");
+
+  row = drawHomeV2HeadlineStrip_(sh, row, showState);
+  mark("Headline Strip");
+
+  row = drawHomeV2TodayAndTimeline_(sh, row, showState, timeline);
+  mark("Today + Timeline");
+
+  row = drawHomeV2TodayCompany_(sh, row, showState);
+  mark("Today Company");
+
+  row = drawHomeV2Notes_(sh, row, showState);
+  mark("Notes");
+
+  row = drawHomeV2Tasks_(
+  sh,
+  row,
+  showState
+);
+
+row = drawHomeV2LongTermAndUpcoming_(
+  sh,
+  row
+);
+
+row = drawHomeV2PTCard_(
+  sh,
+  row,
+  showState
+);
+
+finishHomeV2Sheet_(sh);
+  mark("Finish");
+
+  sh.getRange("A1").activate();
+  mark("Activate");
+
+  return "Home profile complete.";
+}
+
+function testGuestState_DEV() {
+  const showState = buildShowState();
+
+  Logger.log(JSON.stringify(showState.guestSpeller, null, 2));
+}
+
+function testHomeV2HeaderTheme_() {
+  const theme =
+    getHomeV2Theme_();
+
+  const result = {
+    productionName:
+      theme.productionName,
+
+    heroColor:
+      getHomeV2HeroColor_(),
+
+    primaryColor:
+      theme.primaryColor,
+
+    statusHeight:
+      42
+  };
+
+  Logger.log(
+    "HOME V2 HEADER THEME TEST"
+  );
+
+  Logger.log(
+    JSON.stringify(
+      result,
+      null,
+      2
+    )
+  );
+
+  SpreadsheetApp
+    .getUi()
+    .alert(
+      "Home header theme ready.\n\n" +
+      "Hero: " +
+      result.heroColor +
+      "\n" +
+      "Accent: " +
+      result.primaryColor
+    );
+
+  return result;
+}
+
+function diagnoseActiveHomeEventBlockCode_() {
+  const checks = [
+    {
+      name: "buildHomeV2ActivityTimelineEvent_",
+      fn:
+        typeof buildHomeV2ActivityTimelineEvent_ === "function"
+          ? buildHomeV2ActivityTimelineEvent_
+          : null
+    },
+    {
+      name: "assignHomeV2TimelineEventsToBlocks_",
+      fn:
+        typeof assignHomeV2TimelineEventsToBlocks_ === "function"
+          ? assignHomeV2TimelineEventsToBlocks_
+          : null
+    },
+    {
+      name: "shouldHomeV2IncludeEventInBlock_",
+      fn:
+        typeof shouldHomeV2IncludeEventInBlock_ === "function"
+          ? shouldHomeV2IncludeEventInBlock_
+          : null
+    },
+    {
+      name: "getHomeV2TimelineEvents_",
+      fn:
+        typeof getHomeV2TimelineEvents_ === "function"
+          ? getHomeV2TimelineEvents_
+          : null
+    }
+  ];
+
+  checks.forEach(function (check) {
+    Logger.log(
+      "========================================"
+    );
+
+    Logger.log(
+      "ACTIVE FUNCTION: " +
+      check.name
+    );
+
+    Logger.log(
+      check.fn
+        ? String(check.fn)
+        : "MISSING"
+    );
+  });
+
+  SpreadsheetApp
+    .getUi()
+    .alert(
+      "Active HomeOS functions logged.\n\n" +
+      "Open Executions → Logs."
+    );
+}
+  DEFAULT_PRODUCTION_NAME: "THE 25TH ANNUAL PUTNAM COUNTY SPELLING BEE",
+  DEFAULT_PRIMARY: "#2F5DAA",
+  DEFAULT_SECONDARY: "#F4C542",
+  DEFAULT_DARK: "#17130F",
+  DEFAULT_BG: "#F7F4ED",
+  DEFAULT_CARD: "#FFFFFF",
+  DEFAULT_BORDER: "#D8D2C6",
+  DEFAULT_MUTED: "#8A857D",
+  DEFAULT_PAST_BG: "#EFECE4",
+  DEFAULT_NOTE_BG: "#FFFFFF"
+};
+
+/*************************************************
+ * MAIN REFRESH
+ *************************************************/
+
+function refreshStageOSDashboard_V2() {
+  HOME_V2_THEME_CACHE_ = null;
+  HOME_WORKFLOW_STATUS_CACHE_ = null;
+
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(HOME_V2.SHEET_NAME);
+
+  if (!sh) {
+    sh = ss.insertSheet(HOME_V2.SHEET_NAME, 0);
+  }
+
+  const ctx = buildHomeContext_();
+  HOME_CURRENT_CONTEXT_ = null;
+
+  const showState = ctx.showState || {};
+  const timeline = ctx.timeline || {};
+
+  setupHomeV2Sheet_(sh);
+
+  let row = 1;
+
+  row = drawHomeV2Hero_(sh, row, showState);
+  row = drawHomeV2HeadlineStrip_(sh, row, showState);
+  row = drawHomeV2TodayAndTimeline_(sh, row, showState, timeline);
+  row = drawHomeV2TodayCompany_(sh, row, showState);
+  row = drawHomeV2Notes_(sh, row, showState);
+  row = drawHomeV2Tasks_(sh, row, showState);
+  row = drawHomeV2LongTermAndUpcoming_(sh, row);
+
+  /*
+  * Operations utilities.
+  * Kept below Upcoming so they do not repeat the
+  * workflow actions already shown in Today's Tasks.
+  */
+  row = drawHomeV2UtilitiesCard_(sh, row);
+
+  /*
+   * Full editable PT workspace.
+   * Shows today's PT session or the next scheduled session.
+   * Placed below Upcoming because PT is useful but not
+   * always high-priority information.
+   */
+  row = drawHomeV2PTCard_(sh, row, showState);
+
+  finishHomeV2Sheet_(sh);
+
+  sh.getRange("A1").activate();
+}
+
+/*************************************************
+ * SHEET SETUP
+ *************************************************/
+
+function setupHomeV2Sheet_(sh) {
+  sh.setFrozenRows(0);
+  sh.setFrozenColumns(0);
+  sh.setHiddenGridlines(true);
+
+  const range = sh.getRange(1, 1, HOME_V2.MAX_ROWS, HOME_V2.MAX_COLS);
+
+  // Clear only the active Home canvas.
+  range.breakApart();
+  range.clearContent();
+  range.clearFormat();
+  range.clearDataValidations();
+  range.clearNote();
+
+  sh.clearConditionalFormatRules();
+
+  const widths = [80, 135, 170, 170, 24, 90, 155, 155, 155];
+
+  widths.forEach(function(width, index) {
+    if (sh.getColumnWidth(index + 1) !== width) {
+      sh.setColumnWidth(index + 1, width);
+    }
+  });
+
+  range
+    .setFontFamily(HOME_V2.FONT)
+    .setFontSize(12)
+    .setVerticalAlignment("middle")
+    .setWrap(true)
+    .setFontLine("none")
+    .setBackground(HOME_V2.DEFAULT_BG);
+
+  // Faster than 180 individual setRowHeight calls.
+  sh.setRowHeights(1, HOME_V2.MAX_ROWS, HOME_V2.NORMAL_ROW_HEIGHT);
+}
+
+function finishHomeV2Sheet_(sh) {
+  sh.setFrozenRows(0);
+  sh.setFrozenColumns(0);
+  sh.setHiddenGridlines(true);
+}
+
+/*************************************************
+ * THEME
+ *************************************************/
+let HOME_V2_THEME_CACHE_ = null;
+
+function getHomeV2Theme_() {
+  if (HOME_V2_THEME_CACHE_) return HOME_V2_THEME_CACHE_;
+
+  HOME_V2_THEME_CACHE_ = {
+    productionName: getHomeV2Setting_("Production Name", HOME_V2.DEFAULT_PRODUCTION_NAME),
+    primaryColor: getHomeV2Setting_("Primary Color", HOME_V2.DEFAULT_PRIMARY),
+    secondaryColor: getHomeV2Setting_("Secondary Color", HOME_V2.DEFAULT_SECONDARY),
+    darkColor: getHomeV2Setting_("Dark Color", HOME_V2.DEFAULT_DARK),
+    backgroundColor: HOME_V2.DEFAULT_BG,
+    cardColor: HOME_V2.DEFAULT_CARD,
+    borderColor: HOME_V2.DEFAULT_BORDER,
+    mutedText: HOME_V2.DEFAULT_MUTED,
+    pastBackground: HOME_V2.DEFAULT_PAST_BG,
+    noteBackground: HOME_V2.DEFAULT_NOTE_BG
+  };
+
+  return HOME_V2_THEME_CACHE_;
+}
+
+function getHomeV2Setting_(label, fallback) {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName("Production Settings");
+
+  if (!sh) return fallback;
+
+  const lastRow = sh.getLastRow();
+  if (lastRow < 1) return fallback;
+
+  const values = sh.getRange(1, 1, lastRow, 2).getDisplayValues();
+
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0] || "").trim() === label) {
+      return String(values[i][1] || "").trim() || fallback;
+    }
+  }
+
+  return fallback;
+}
+
+function getHomeV2HeroColor_() {
+  return getHomeV2Setting_(
+    "Home Hero Color",
+    "#173B8F"
+  );
+}
+
+/*************************************************
+ * SHARED DRAW HELPERS
+ *************************************************/
+
+function drawHomeV2CardTitle_(sh, row, col, width, title) {
+  const theme = getHomeV2Theme_();
+
+  sh.getRange(row, col, 1, width)
+    .merge()
+    .setValue(title)
+    .setFontWeight("bold")
+    .setFontColor("white")
+    .setFontSize(12)
+    .setBackground(theme.primaryColor)
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setFontLine("none");
+
+  sh.setRowHeight(row, HOME_V2.CARD_TITLE_HEIGHT);
+
+  return row + 1;
+}
+
+/*************************************************
+ * CHUNK 9 — CARD BORDER POLISH
+ * Version: 0.3.6
+ *************************************************/
+
+function styleHomeV2Card_(sh, startRow, startCol, numRows, numCols) {
+  const theme = getHomeV2Theme_();
+
+  const range = sh.getRange(startRow, startCol, numRows, numCols);
+
+  // Do NOT reset the whole card background here.
+  // That was wiping out blue section headers.
+  range.setBorder(
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID
+  );
+
+  // Slightly stronger outside border.
+  range.setBorder(
+    true,
+    true,
+    true,
+    true,
+    null,
+    null,
+    theme.borderColor,
+    SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+  );
+}
+
+function styleHomeV2OuterCardOnly_(sh, startRow, startCol, numRows, numCols) {
+  const theme = getHomeV2Theme_();
+
+  sh.getRange(startRow, startCol, numRows, numCols)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+}
+
+function fillHomeV2CardBody_(sh, startRow, startCol, numRows, numCols) {
+  const theme = getHomeV2Theme_();
+
+  if (numRows <= 0) return;
+
+  sh.getRange(startRow, startCol, numRows, numCols)
+    .setBackground(theme.cardColor);
+}
+
+function drawHomeV2EmptyLine_(sh, row, col, width, text) {
+  const theme = getHomeV2Theme_();
+
+  sh.getRange(row, col, 1, width)
+    .merge()
+    .setValue(text)
+    .setFontColor(theme.mutedText)
+    .setFontSize(13)
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+
+  sh.setRowHeight(row, HOME_V2.NORMAL_ROW_HEIGHT);
+
+  return row + 1;
+}
+
+function normalizeHomeV2Text_(value) {
+  return String(value || "")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizeHomeV2Notes_(notes) {
+  if (!notes) return "";
+
+  if (Array.isArray(notes)) {
+    return normalizeHomeV2Text_(notes.join("\n"));
+  }
+
+  return normalizeHomeV2Text_(notes);
+}
+
+function homeV2SafeArray_(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+/*************************************************
+ * SHARED SHOWSTATE HELPERS
+ *************************************************/
+
+function getHomeV2Performances_(showState) {
+  return homeV2SafeArray_(showState && showState.performances);
+}
+
+function getHomeV2CastOuts_(showState) {
+  return homeV2SafeArray_(showState && showState.currentCastOuts);
+}
+
+function getHomeV2FirstPerformance_(showState) {
+  const perfs = getHomeV2Performances_(showState);
+  return perfs.length ? perfs[0] : {};
+}
+
+function getHomeConductorFromShowState_(showState) {
+  const perfs = getHomeV2Performances_(showState);
+
+  for (let i = 0; i < perfs.length; i++) {
+    const conductor = perfs[i].conductor || "";
+    if (conductor) return conductor;
+  }
+
+  return showState && showState.conductor ? showState.conductor : "";
+}
+
+function getHomeGuestSpellerFromShowState_(showState) {
+  if (!showState) return "";
+
+  const guestState = showState.guestSpeller;
+
+  /*
+   * The canonical ShowState object explicitly says
+   * whether a guest exists.
+   */
+  if (
+    guestState &&
+    typeof guestState === "object" &&
+    guestState.exists === false
+  ) {
+    return "";
+  }
+
+  const directName =
+    homeV2ExtractDisplayName_(guestState);
+
+  if (directName) {
+    return directName;
+  }
+
+  const performances =
+    getHomeV2Performances_(showState);
+
+  for (let i = 0; i < performances.length; i++) {
+    const performance = performances[i] || {};
+
+    const guestName =
+      homeV2ExtractDisplayName_(
+        performance.guestSpeller
+      );
+
+    if (guestName) {
+      return guestName;
+    }
+  }
+
+  return "";
+}
+
+function homeV2ExtractDisplayName_(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === false
+  ) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    const clean = value.trim();
+
+    if (
+      !clean ||
+      clean === "[object Object]" ||
+      clean.toUpperCase() === "NONE" ||
+      clean.toUpperCase() === "N/A" ||
+      clean.toUpperCase() === "TBD"
+    ) {
+      return "";
+    }
+
+    return clean;
+  }
+
+  if (typeof value !== "object") {
+    return "";
+  }
+
+  const possibleValues = [
+    value.name,
+    value.fullName,
+    value.displayName,
+    value.guestName,
+    value.guestSpeller
+  ];
+
+  for (let i = 0; i < possibleValues.length; i++) {
+    const result = homeV2ExtractDisplayName_(
+      possibleValues[i]
+    );
+
+    if (result) return result;
+  }
+
+  return "";
+}
+
+function homeV2HasGuestSpeller_(showState) {
+  return Boolean(
+    getHomeGuestSpellerFromShowState_(
+      showState || {}
+    )
+  );
+}
+
+function formatHomeV2PerformanceShort_(perf) {
+  if (typeof perf === "string") return perf;
+
+  perf = perf || {};
+
+  const number = perf.number || perf.performanceNumber || "";
+  const time = perf.time || perf.performanceTime || "";
+
+  if (number && time) return "Performance #" + number + " • " + time;
+  if (number) return "Performance #" + number;
+  if (time) return time;
+
+  return (
+    perf.inOutText ||
+    perf.performanceText ||
+    perf.label ||
+    perf.title ||
+    "Performance"
+  );
+}
+
+function formatHomeV2PerformanceTitle_(perf) {
+  if (typeof perf === "string") return perf;
+
+  perf = perf || {};
+
+  const number = perf.number || perf.performanceNumber || "";
+  return number ? "PERFORMANCE #" + number : "PERFORMANCE";
+}
+
+function formatHomeV2PerformanceTime_(perf) {
+  if (typeof perf === "string") return "";
+
+  perf = perf || {};
+  return perf.time || perf.performanceTime || "";
+}
+
+/*************************************************
+ * CHUNK 2 — HERO + HEADLINE STRIP
+ *************************************************/
+
+function drawHomeV2Hero_(
+  sh,
+  row,
+  showState
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  const heroColor =
+    getHomeV2HeroColor_();
+
+  const title =
+    theme.productionName;
+
+  const date =
+    showState.prettyDate ||
+    showState.date ||
+    "";
+
+  const heroBody =
+    buildHomeV2HeroBody_(
+      showState
+    );
+
+  const range =
+    sh.getRange(
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.HERO_ROWS,
+      HOME_V2.FULL_WIDTH
+    );
+
+  range
+    .merge()
+    .setValue(
+      [
+        title,
+        "",
+        date,
+        "",
+        heroBody
+      ].join("\n")
+    )
+    .setBackground(
+      heroColor
+    )
+    .setFontColor(
+      "#FFFFFF"
+    )
+    .setFontWeight(
+      "bold"
+    )
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setWrap(true)
+    .setFontSize(18)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      theme.primaryColor,
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+
+  sh.setRowHeight(row, 42);
+  sh.setRowHeight(row + 1, 22);
+  sh.setRowHeight(row + 2, 38);
+  sh.setRowHeight(row + 3, 20);
+  sh.setRowHeight(row + 4, 44);
+
+  return (
+    row +
+    HOME_V2.HERO_ROWS +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+function buildHomeV2HeroDayLine_(showState) {
+  return buildHomeV2HeroBody_(showState);
+}
+
+function buildHomeV2HeroBody_(showState) {
+  const pieces = [];
+
+  getHomeV2Performances_(showState).forEach(function (perf) {
+    const number = perf.number || perf.performanceNumber || "";
+    const time = perf.time || perf.performanceTime || "";
+
+    if (number && time) {
+      pieces.push("Performance #" + number + " • " + time);
+    } else if (number) {
+      pieces.push("Performance #" + number);
+    } else if (time) {
+      pieces.push(time);
+    }
+  });
+
+  buildHomeV2RehearsalHeadlineItems_(showState).forEach(function (item) {
+    if (item) pieces.push(item);
+  });
+
+  return pieces.length ? pieces.join("  •  ") : "No performance or rehearsal selected";
+}
+
+function buildHomeV2RehearsalHeadlineItems_(showState) {
+  const notes = normalizeHomeV2Notes_(showState.notes);
+  if (!notes) return [];
+
+  const lines = notes
+    .split(/\n+/)
+    .map(function (line) {
+      return line.replace(/^[-•]\s*/, "").trim();
+    })
+    .filter(Boolean);
+
+  return lines.filter(function (line) {
+    const upper = line.toUpperCase();
+
+    if (upper.includes("PRESS")) return false;
+    if (upper.includes("FILMING")) return false;
+    if (upper.includes("PHOTO")) return false;
+    if (upper.includes("PT ")) return false;
+
+    return (
+      upper.includes("REHEARSAL") ||
+      upper.includes("BRUSH-UP") ||
+      upper.includes("BRUSH UP") ||
+      upper.includes("PUT-IN") ||
+      upper.includes("PUT IN") ||
+      upper.includes("UNDERSTUDY")
+    );
+  }).slice(0, 3);
+}
+
+/*************************************************
+ * HOMEOS V2 - STATUS STRIP DOUBLE BORDER
+ * Version: 1.0.0
+ *
+ * In 06v HOMEOS V2 LAYOUT.gs:
+ *
+ * Replace only:
+ *   drawHomeV2HeadlineStrip_
+ *
+ * Keep:
+ *   buildHomeV2HeadlineStripItems_
+ * exactly as it is.
+ *************************************************/
+
+function drawHomeV2HeadlineStrip_(
+  sh,
+  row,
+  showState
+) {
+  const theme =
+    getHomeV2Theme_();
+
+  const items =
+    buildHomeV2HeadlineStripItems_(
+      showState
+    );
+
+  if (!items.length) {
+    return row;
+  }
+
+  const range =
+    sh.getRange(
+      row,
+      HOME_V2.FULL_COL,
+      HOME_V2.STRIP_ROWS,
+      HOME_V2.FULL_WIDTH
+    );
+
+  range
+    .merge()
+    .setValue(
+      items.join(
+        "   •   "
+      )
+    )
+    .setBackground(
+      theme.cardColor
+    )
+    .setFontColor(
+      "#111111"
+    )
+    .setFontWeight(
+      "bold"
+    )
+    .setFontSize(13)
+    .setHorizontalAlignment(
+      "center"
+    )
+    .setVerticalAlignment(
+      "middle"
+    )
+    .setWrap(true);
+
+  /*
+   * Keep the side edges clean and connected to the page.
+   */
+  range.setBorder(
+    false,  // top
+    true,   // left
+    false,  // bottom
+    true,   // right
+    false,  // vertical
+    false,  // horizontal
+    theme.primaryColor,
+    SpreadsheetApp.BorderStyle.SOLID
+  );
+
+  /*
+   * Strong double rules above and below the status line.
+   */
+  range.setBorder(
+    true,   // top
+    null,   // left unchanged
+    true,   // bottom
+    null,   // right unchanged
+    false,  // vertical
+    false,  // horizontal
+    theme.primaryColor,
+    SpreadsheetApp.BorderStyle.DOUBLE
+  );
+
+  sh.setRowHeight(
+    row,
+    42
+  );
+
+  return (
+    row +
+    HOME_V2.STRIP_ROWS +
+    HOME_V2.GAP_ROWS
+  );
+}
+
 function buildHomeV2HeadlineStripItems_(showState) {
   const items = [];
 

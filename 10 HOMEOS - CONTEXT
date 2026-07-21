@@ -5,7 +5,6 @@
 
 function buildHomeContext_() {
   clearHomeContext_();
-``
   const showState = buildShowState();
   let timeline = buildTimelineOS(showState);
 

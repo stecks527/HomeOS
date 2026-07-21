@@ -1,0 +1,143 @@
+/*************************************************
+ * 10 HOMEOS - SCHEDULE AREA
+ * Version: 1.0.0
+ *
+ * Owns the Today + Timeline schedule section.
+ *
+ * Responsibilities:
+ * - Build Schedule Blocks
+ * - Apply fallback block
+ * - Coordinate Today + Timeline rendering
+ * - Manage spacing between schedule blocks
+ *
+ * Does NOT:
+ * - Build ShowState
+ * - Build Timeline
+ * - Draw other Home cards
+ *************************************************/
+
+ function drawHomeV2TodayAndTimeline_(
+  sh,
+  row,
+  showState,
+  timeline
+) {
+  let blocks =
+    HomeEventBlockOS()
+      .build(
+        showState,
+        timeline
+      );
+
+  /*
+   * A safe display block keeps Home usable even when the
+   * source data contains no recognizable major event.
+   */
+  if (!blocks.length) {
+    blocks = [
+      buildHomeV3FallbackEventBlock_(
+        showState,
+        timeline
+      )
+    ];
+  }
+
+  blocks.forEach(
+    function (block, index) {
+      const eventCount =
+        (block.events || [])
+          .length;
+
+      /*
+       * Six body rows preserve the clean summary proportions.
+       * Longer timelines simply extend both sides equally.
+       */
+      const bodyRows =
+        Math.max(
+          eventCount,
+          6
+        );
+
+      const blockRows =
+        bodyRows + 1;
+
+      drawHomeV3TodayBlock_(
+        sh,
+        row,
+        blockRows,
+        block
+      );
+
+      drawHomeV3TimelineBlock_(
+        sh,
+        row,
+        blockRows,
+        block.events || []
+      );
+
+      row += blockRows;
+
+      if (
+        index <
+        blocks.length - 1
+      ) {
+        sh.getRange(
+          row,
+          HOME_V2.FULL_COL,
+          1,
+          HOME_V2.FULL_WIDTH
+        )
+          .setBackground(
+            getHomeV2Theme_()
+              .backgroundColor
+          )
+          .clearContent();
+
+        sh.setRowHeight(
+          row,
+          14
+        );
+
+        row++;
+      }
+    }
+  );
+
+  return (
+    row +
+    HOME_V2.GAP_ROWS
+  );
+}
+
+function buildHomeV3FallbackEventBlock_(
+  showState,
+  timeline
+) {
+  const events =
+    getHomeV2TimelineEvents_(
+      timeline,
+      showState
+    );
+
+  return {
+    id: "HOME_FALLBACK",
+    type: "fallback",
+    category: "Fallback",
+    header: "TODAY'S EVENTS",
+    title:
+      "NO MAJOR EVENT SELECTED",
+    timeText: "",
+    startMinutes:
+      9999999999999,
+
+    summary: {
+      title:
+        "NO PERFORMANCE OR REHEARSAL SELECTED",
+      primary: "",
+      label: "",
+      value: ""
+    },
+
+    events: events
+  };
+}

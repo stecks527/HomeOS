@@ -1,12 +1,17 @@
 /*************************************************
  * 10 HOMEOS - BUTTONS
- * Version: 4.0.0
+ * Version: 4.1.0
  * Status: ACTIVE
  *
- * Home checkbox routing and authorized trigger only.
+ * Home checkbox/dropdown routing and authorized trigger only.
  *
  * Workflow actions live in:
  * 00 STAGEOS - ACTIONS.gs
+ *************************************************/
+
+
+/*************************************************
+ * INSTALL / REMOVE AUTHORIZED HOME TRIGGER
  *************************************************/
 
 function installHomeOSActionTrigger() {
@@ -19,7 +24,8 @@ function installHomeOSActionTrigger() {
 
   SpreadsheetApp.getUi().alert(
     "HomeOS action trigger installed.\n\n" +
-    "Home mission-action checkboxes can now open dialogs and run authorized workflows."
+    "Home mission-action controls can now open dialogs " +
+    "and run authorized workflows."
   );
 }
 
@@ -30,6 +36,11 @@ function removeHomeOSActionTrigger() {
     }
   });
 }
+
+
+/*************************************************
+ * AUTHORIZED HOME ON-EDIT ROUTER
+ *************************************************/
 
 function homeOSInstallableOnEdit_(e) {
   try {
@@ -48,16 +59,8 @@ function homeOSInstallableOnEdit_(e) {
       return;
     }
 
-    if (
-      note.indexOf(
-        "PT_SLOT:"
-      ) === 0
-    ) {
-      homeOSHandlePTSlotEdit_(
-        range,
-        note
-      );
-
+    if (note.indexOf("PT_SLOT:") === 0) {
+      homeOSHandlePTSlotEdit_(range, note);
       return;
     }
 
@@ -67,9 +70,10 @@ function homeOSInstallableOnEdit_(e) {
     }
 
     if (note.indexOf("LONG_TERM_TASK_ROW:") === 0) {
-  homeOSHandleLongTermTaskEdit_(range, note);
-  return;
-}
+      homeOSHandleLongTermTaskEdit_(range, note);
+      return;
+    }
+
   } catch (err) {
     SpreadsheetApp.getUi().alert(
       "Home action failed:\n\n" +
@@ -78,38 +82,32 @@ function homeOSInstallableOnEdit_(e) {
   }
 }
 
-function homeOSHandleMissionActionEdit_(
-  range,
-  note
-) {
-  const value =
-    range.getValue();
+
+/*************************************************
+ * MISSION ACTION EDIT HANDLER
+ *************************************************/
+
+function homeOSHandleMissionActionEdit_(range, note) {
+  const value = range.getValue();
 
   /*
-   * Support:
+   * Supports:
    * - New "▶ Run" dropdown
    * - Older checkbox-based action cells
    */
   const wasTriggered =
     value === true ||
-    String(value || "")
-      .trim() === "▶ Run";
+    String(value || "").trim() === "▶ Run";
 
-  if (!wasTriggered) {
-    return;
-  }
+  if (!wasTriggered) return;
 
-  const action =
-    String(note || "")
-      .replace(
-        "MISSION_ACTION:",
-        ""
-      )
-      .trim();
+  const action = String(note || "")
+    .replace("MISSION_ACTION:", "")
+    .trim();
 
   /*
    * Reset the control before launching the workflow.
-   * This keeps it ready for the next use even if the
+   * This keeps it ready for reuse even if the
    * downstream workflow opens a dialog.
    */
   if (value === true) {
@@ -118,28 +116,17 @@ function homeOSHandleMissionActionEdit_(
     range.clearContent();
   }
 
-  if (!action) {
-    return;
-  }
+  if (!action) return;
 
-  return runHomeMissionAction_(
-    action
-  );
+  return runHomeMissionAction_(action);
 }
+
+
 /*************************************************
  * HOME MISSION ACTION ROUTING
- * Version: 1.1.0
- *
- * In 10 HOMEOS - BUTTONS.gs, replace only:
- *   runHomeMissionAction_
- *
- * This adds Upload Receipt and Sync Gmail Receipts while
- * preserving all existing Home action routes.
  *************************************************/
 
-function runHomeMissionAction_(
-  action
-) {
+function runHomeMissionAction_(action) {
   const actions = {
     homeButtonPrepInOut:
       homeButtonPrepInOut,
@@ -193,22 +180,19 @@ function runHomeMissionAction_(
       homeButtonUploadReceipt,
 
     homeButtonSyncGmailReceipts:
-      homeButtonSyncGmailReceipts
+      homeButtonSyncGmailReceipts,
+
+    homeButtonRefreshPayroll:
+      homeButtonRefreshPayroll
   };
 
-  const handler =
-    actions[action];
+  const handler = actions[action];
 
-  if (
-    typeof handler !==
-    "function"
-  ) {
-    SpreadsheetApp
-      .getUi()
-      .alert(
-        "No Home action handler found for:\n\n" +
-        action
-      );
+  if (typeof handler !== "function") {
+    SpreadsheetApp.getUi().alert(
+      "No Home action handler found for:\n\n" +
+      action
+    );
 
     return;
   }
@@ -216,8 +200,13 @@ function runHomeMissionAction_(
   return handler();
 }
 
+
+/*************************************************
+ * WORKFLOW TASK HANDLER
+ *************************************************/
+
 function homeOSHandleWorkflowTaskEdit_(range, note) {
-  const taskId = note
+  const taskId = String(note || "")
     .replace("WORKFLOW_TASK:", "")
     .trim();
 
@@ -239,11 +228,18 @@ function homeOSHandleWorkflowTaskEdit_(range, note) {
   }
 }
 
+
+/*************************************************
+ * LONG-TERM TASK HANDLER
+ *************************************************/
+
 function homeOSHandleLongTermTaskEdit_(range, note) {
   if (range.getValue() !== true) return;
 
   const sourceRow = Number(
-    note.replace("LONG_TERM_TASK_ROW:", "")
+    String(note || "")
+      .replace("LONG_TERM_TASK_ROW:", "")
+      .trim()
   );
 
   if (!sourceRow) return;
@@ -255,7 +251,9 @@ function homeOSHandleLongTermTaskEdit_(range, note) {
     ss.getSheetByName("Long Term Tasks");
 
   if (!taskSheet) {
-    throw new Error('Could not find "Long-Term Tasks" sheet.');
+    throw new Error(
+      'Could not find "Long-Term Tasks" sheet.'
+    );
   }
 
   const headerA = String(
@@ -263,27 +261,330 @@ function homeOSHandleLongTermTaskEdit_(range, note) {
   ).toLowerCase();
 
   if (headerA.indexOf("task") !== -1) {
-    taskSheet.getRange(sourceRow, 4).setValue("Done");
+    taskSheet
+      .getRange(sourceRow, 4)
+      .setValue("Done");
   } else {
-    taskSheet.getRange(sourceRow, 1).setValue(true);
+    taskSheet
+      .getRange(sourceRow, 1)
+      .setValue(true);
   }
 
-  refreshHomeAfterWorkflow_();
+  if (typeof refreshHomeAfterWorkflow_ === "function") {
+    refreshHomeAfterWorkflow_();
+  }
 }
+
+/*************************************************
+ * HOME ACTION RUNNER
+ * Version: 1.0.0
+ *
+ * Standard runner for all HomeOS actions.
+ *************************************************/
+
+function runHomeAction_(options) {
+  options = options || {};
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+
+  const title =
+    String(options.title || "StageOS");
+
+  const action =
+    options.action;
+
+  const refreshHome =
+    options.refreshHome !== false;
+
+  const buildMessage =
+    typeof options.successMessageBuilder === "function"
+      ? options.successMessageBuilder
+      : null;
+
+  if (typeof action !== "function") {
+    throw new Error(
+      'runHomeAction_() requires a valid action function.'
+    );
+  }
+
+  try {
+
+    ss.toast(
+      title + "...",
+      "StageOS",
+      3
+    );
+
+    const result =
+      action();
+
+    SpreadsheetApp.flush();
+
+    if (refreshHome) {
+      HomeOS().refresh();
+    }
+
+    ss.toast(
+      title + " Complete",
+      "StageOS",
+      3
+    );
+
+    if (buildMessage) {
+      ui.alert(
+        title,
+        buildMessage(result),
+        ui.ButtonSet.OK
+      );
+    }
+
+    return result;
+
+  } catch (err) {
+
+    ui.alert(
+      title + " Failed",
+      String(
+        err && err.message
+          ? err.message
+          : err
+      ),
+      ui.ButtonSet.OK
+    );
+
+    throw err;
+  }
+}
+
+
+/*************************************************
+ * HOME BUTTON
+ * FORCE PAYROLL SYNC
+ *************************************************/
+
+function homeButtonRefreshPayroll() {
+
+  return runHomeAction_({
+
+    title:
+      "Refresh Payroll",
+
+    action:
+      updateCurrentPayrollNotes,
+
+    refreshHome:
+      true,
+
+    successMessageBuilder:
+      buildHomePayrollSyncResultMessage_
+
+  });
+
+}
+
+
+/*************************************************
+ * PAYROLL SYNC RESULT MESSAGE
+ *************************************************/
+
+function buildHomePayrollSyncResultMessage_(result) {
+
+  result = result || {};
+
+  const lines = [
+    "✓ Current Payroll Notes updated",
+    "✓ Payroll grid left editable and unchanged",
+    ""
+  ];
+
+  if (result.weeklySheet) {
+    lines.push(
+      "Weekly source: " +
+      result.weeklySheet
+    );
+  }
+
+  if (
+    result.weekStart ||
+    result.weekEnd
+  ) {
+    lines.push(
+      "Week: " +
+      String(result.weekStart || "") +
+      " through " +
+      String(result.weekEnd || "")
+    );
+  }
+
+  if (
+    result.notesCell
+  ) {
+    lines.push(
+      "Notes written to: " +
+      result.notesCell
+    );
+  }
+
+  if (
+    result.outPerformances != null
+  ) {
+    lines.push(
+      "OUT performances: " +
+      result.outPerformances
+    );
+  }
+
+  if (
+    result.coveragePerformances != null
+  ) {
+    lines.push(
+      "Coverage performances: " +
+      result.coveragePerformances
+    );
+  }
+
+  if (
+    result.missingCoveragePerformances != null
+  ) {
+    lines.push(
+      "Missing coverage: " +
+      result.missingCoveragePerformances
+    );
+  }
+
+  if (
+    result.durationMs != null
+  ) {
+    lines.push(
+      "Completed in " +
+      result.durationMs +
+      " ms"
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function getHomePayrollSyncResultNumber_(
+  result,
+  possibleKeys
+) {
+  for (
+    let i = 0;
+    i < possibleKeys.length;
+    i++
+  ) {
+    const key = possibleKeys[i];
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        result,
+        key
+      )
+    ) {
+      const value = Number(result[key]);
+
+      if (!isNaN(value)) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+}
+
+
+/*************************************************
+ * ROUTING DIAGNOSTIC
+ *************************************************/
 
 function testHomeOSActionRouting() {
   const results = [
-    { name: "homeButtonPrepInOut", available: typeof homeButtonPrepInOut === "function" },
-    { name: "homeButtonBuildPerformanceReport", available: typeof homeButtonBuildPerformanceReport === "function" },
-    { name: "homeButtonDraftReport", available: typeof homeButtonDraftReport === "function" },
-    { name: "homeButtonAddOut", available: typeof homeButtonAddOut === "function" },
-    { name: "homeButtonExportCalendar", available: typeof homeButtonExportCalendar === "function" },
-    { name: "homeButtonCreateNextWeeklySchedule", available: typeof homeButtonCreateNextWeeklySchedule === "function" },
-    { name: "homeButtonWeeklyEmailDraft", available: typeof homeButtonWeeklyEmailDraft === "function" },
-    { name: "homeButtonPayrollEmailDraft", available: typeof homeButtonPayrollEmailDraft === "function" },
-    { name: "homeButtonPerishablesEmailDraft", available: typeof homeButtonPerishablesEmailDraft === "function" },
-    { name: "homeButtonExportInOutPdf", available: typeof homeButtonExportInOutPdf === "function" },
-    { name: "homeButtonGuestSpellerPacket", available: typeof homeButtonGuestSpellerPacket === "function" }
+    {
+      name: "homeButtonPrepInOut",
+      available:
+        typeof homeButtonPrepInOut ===
+        "function"
+    },
+    {
+      name: "homeButtonBuildPerformanceReport",
+      available:
+        typeof homeButtonBuildPerformanceReport ===
+        "function"
+    },
+    {
+      name: "homeButtonDraftReport",
+      available:
+        typeof homeButtonDraftReport ===
+        "function"
+    },
+    {
+      name: "homeButtonAddOut",
+      available:
+        typeof homeButtonAddOut ===
+        "function"
+    },
+    {
+      name: "homeButtonExportCalendar",
+      available:
+        typeof homeButtonExportCalendar ===
+        "function"
+    },
+    {
+      name: "homeButtonCreateNextWeeklySchedule",
+      available:
+        typeof homeButtonCreateNextWeeklySchedule ===
+        "function"
+    },
+    {
+      name: "homeButtonWeeklyEmailDraft",
+      available:
+        typeof homeButtonWeeklyEmailDraft ===
+        "function"
+    },
+    {
+      name: "homeButtonPayrollEmailDraft",
+      available:
+        typeof homeButtonPayrollEmailDraft ===
+        "function"
+    },
+    {
+      name: "homeButtonPerishablesEmailDraft",
+      available:
+        typeof homeButtonPerishablesEmailDraft ===
+        "function"
+    },
+    {
+      name: "homeButtonExportInOutPdf",
+      available:
+        typeof homeButtonExportInOutPdf ===
+        "function"
+    },
+    {
+      name: "homeButtonGuestSpellerPacket",
+      available:
+        typeof homeButtonGuestSpellerPacket ===
+        "function"
+    },
+    {
+      name: "homeButtonUploadReceipt",
+      available:
+        typeof homeButtonUploadReceipt ===
+        "function"
+    },
+    {
+      name: "homeButtonSyncGmailReceipts",
+      available:
+        typeof homeButtonSyncGmailReceipts ===
+        "function"
+    },
+    {
+      name: "homeButtonRefreshPayroll",
+      available:
+        typeof homeButtonRefreshPayroll ===
+        "function"
+    }
   ];
 
   const missing = results.filter(function (item) {
@@ -292,11 +593,21 @@ function testHomeOSActionRouting() {
 
   SpreadsheetApp.getUi().alert(
     "HomeOS action routing test.\n\n" +
-    "Actions checked: " + results.length + "\n" +
-    "Missing: " + missing.length +
-    (missing.length
-      ? "\n\n" + missing.map(function (item) { return item.name; }).join("\n")
-      : "")
+    "Actions checked: " +
+    results.length +
+    "\n" +
+    "Missing: " +
+    missing.length +
+    (
+      missing.length
+        ? "\n\n" +
+          missing
+            .map(function (item) {
+              return item.name;
+            })
+            .join("\n")
+        : ""
+    )
   );
 
   return {

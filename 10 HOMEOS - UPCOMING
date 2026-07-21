@@ -1,166 +1,924 @@
 /*************************************************
  * 10 HOMEOS - UPCOMING
- * Version: 1.0.0
+ * Version: 2.0.0
  * Status: ACTIVE
  *
  * Responsibilities:
  * - Draw the Home Upcoming card.
- * - Preview the next five days.
- * - Read structured Weekly information.
- * - Add a compact PT summary when applicable.
- *
- * PT slot editing and the full PT card live in:
- * 10h HOMEOS - PT TODAY.gs
+ * - Preview the next five calendar days.
+ * - Consume the structured WeeklyScheduleOS model.
+ * - Render a compact Weekly-style schedule.
  *
  * Never:
- * - Draw Current Focus.
- * - Draw Timeline.
- * - Edit source sheets.
+ * - Parse the generated Weekly Schedule sheet.
+ * - Edit WeeklyOS source data.
+ *************************************************/
+
+/*************************************************
+ * 10 HOMEOS - UPCOMING RENDERER
+ * Version: 2.1.0
+ *
+ * Weekly Schedule-inspired Home layout.
+ *
+ * This file expects the existing data functions:
+ *
+ * - getDashboardUpcomingFromWeekly_()
+ * - buildDashboardUpcomingDayFromModel_()
+ *
+ * Do not replace the working data/model functions.
  *************************************************/
 
 
 /* =========================================================
- * UPCOMING CARD
+ * HOME V2 ENTRY POINT
  * ========================================================= */
 
-function drawUpcomingCard_(
-  sh,
-  row
-) {
-  row =
-    drawCardTitle_(
-      sh,
-      row,
-      "UPCOMING"
+function drawHomeV2UpcomingCard_(sh, row) {
+  const startRow = row;
+  const theme = getHomeUpcomingTheme_();
+
+  /*
+   * Main UPCOMING title.
+   */
+  sh.getRange(row, 1, 1, 9)
+    .merge()
+    .setValue("UPCOMING")
+    .setFontFamily("Arial")
+    .setFontSize(12)
+    .setFontWeight("bold")
+    .setFontColor("#FFFFFF")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setBackground(theme.darkBlue)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      theme.darkBlue,
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
     );
 
-  const upcoming =
-    getDashboardUpcomingFromWeekly_();
+  sh.setRowHeight(row, 30);
+  row++;
+
+  /*
+   * One shared column-heading row.
+   */
+  row = drawHomeUpcomingColumnHeaders_(sh, row, theme);
+
+  const upcoming = getDashboardUpcomingFromWeekly_();
 
   if (!upcoming.length) {
-    return drawEmptyLine_(
-      sh,
-      row,
-      "No upcoming items found."
-    );
+    sh.getRange(row, 1, 1, 9)
+      .merge()
+      .setValue("No upcoming schedule information found.")
+      .setFontFamily("Arial")
+      .setFontSize(10)
+      .setFontColor(theme.mutedText)
+      .setHorizontalAlignment("center")
+      .setVerticalAlignment("middle")
+      .setBackground("#FFFFFF")
+      .setBorder(
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        theme.borderColor,
+        SpreadsheetApp.BorderStyle.SOLID
+      );
+
+    sh.setRowHeight(row, 36);
+    row++;
+  } else {
+    upcoming.forEach(function(day) {
+      row = drawHomeUpcomingDay_(sh, row, day, theme);
+    });
   }
 
-  upcoming
-    .slice(0, 5)
-    .forEach(function (day) {
-      row =
-        drawUpcomingDay_(
-          sh,
-          row,
-          day
-        );
-    });
+  /*
+   * Outside border around the complete Upcoming section.
+   */
+  sh.getRange(
+    startRow,
+    1,
+    Math.max(1, row - startRow),
+    9
+  ).setBorder(
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    theme.darkBlue,
+    SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+  );
+
+  return row + 1;
+}
+
+
+/*
+ * Compatibility alias.
+ */
+function drawUpcomingCard_(sh, row) {
+  return drawHomeV2UpcomingCard_(sh, row);
+}
+
+
+/* =========================================================
+ * COLUMN HEADERS
+ * ========================================================= */
+
+function drawHomeUpcomingColumnHeaders_(sh, row, theme) {
+  sh.getRange(row, 1, 1, 2)
+    .merge()
+    .setValue("TIME");
+
+  sh.getRange(row, 3, 1, 4)
+    .merge()
+    .setValue("EVENT");
+
+  sh.getRange(row, 7, 1, 3)
+    .merge()
+    .setValue("WHO");
+
+  sh.getRange(row, 1, 1, 9)
+    .setFontFamily("Arial")
+    .setFontSize(9)
+    .setFontWeight("bold")
+    .setFontColor("#111111")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setBackground(theme.headerFill)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID
+    );
+
+  sh.setRowHeight(row, 22);
 
   return row + 1;
 }
 
 
 /* =========================================================
- * UPCOMING DAY
+ * ONE DAY
  * ========================================================= */
 
-function drawUpcomingDay_(
-  sh,
-  row,
-  day
-) {
-  day =
-    day || {};
+function drawHomeUpcomingDay_(sh, row, day, theme) {
+  day = day || {};
 
-  /*
-   * Day heading
-   */
-  sh.getRange(
-    row,
-    1,
-    1,
-    9
-  )
-    .merge()
-    .setValue(
-      day.day || ""
-    )
-    .setFontWeight("bold")
-    .setFontSize(13)
-    .setHorizontalAlignment("center")
-    .setVerticalAlignment("middle")
-    .setBackground("#F6F8FC");
+  row = drawHomeUpcomingDayHeader_(sh, row, day, theme);
 
-  sh.setRowHeight(
-    row,
-    28
-  );
+  if (day.dayOff) {
+    row = drawHomeUpcomingDayOff_(sh, row, day.dayOff, theme);
+    return row + 1;
+  }
 
-  row++;
+  const events = Array.isArray(day.events)
+    ? day.events
+    : [];
 
-  const items =
-    Array.isArray(day.items)
-      ? day.items
-      : [];
-
-  items.forEach(function (item) {
-    item =
-      item || {};
-
-    const detailText =
-      String(
-        item.detail ||
-        item.summary ||
-        ""
-      ).trim();
-
-    /*
-     * Item label
-     */
-    sh.getRange(
-      row,
-      1,
-      1,
-      2
-    )
+  if (!events.length) {
+    sh.getRange(row, 1, 1, 9)
       .merge()
-      .setValue(
-        item.label || ""
-      )
-      .setFontWeight("bold")
+      .setValue("No scheduled activity.")
+      .setFontFamily("Arial")
+      .setFontSize(10)
+      .setFontColor(theme.mutedText)
       .setHorizontalAlignment("center")
-      .setVerticalAlignment("middle");
-
-    /*
-     * Item detail
-     */
-    sh.getRange(
-      row,
-      3,
-      1,
-      7
-    )
-      .merge()
-      .setValue(
-        detailText
-      )
-      .setFontSize(13)
       .setVerticalAlignment("middle")
-      .setWrap(true);
+      .setBackground("#FFFFFF")
+      .setBorder(
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        theme.borderColor,
+        SpreadsheetApp.BorderStyle.SOLID
+      );
 
-    sh.setRowHeight(
-      row,
-      detailText.includes("\n")
-        ? 54
-        : 38
-    );
-
+    sh.setRowHeight(row, 30);
     row++;
-  });
+  } else {
+    let performanceDividerAdded = false;
+
+    events.forEach(function(event) {
+      const isPerformance =
+        String(event.type || "").toLowerCase() === "performance";
+
+      if (isPerformance && !performanceDividerAdded) {
+        row = drawHomeUpcomingGoldDivider_(sh, row, theme);
+        performanceDividerAdded = true;
+      }
+
+      row = drawHomeUpcomingEventRow_(sh, row, event, theme);
+    });
+  }
+
+  if (
+    Array.isArray(day.castChanges) &&
+    day.castChanges.length
+  ) {
+    row = drawHomeUpcomingCastCrew_(sh, row, day.castChanges, theme);
+  }
+
+  if (
+    day.ptSummary &&
+    day.ptSummary.exists
+  ) {
+    row = drawHomeUpcomingPt_(sh, row, day.ptSummary, theme);
+  }
+
+  if (
+    Array.isArray(day.notes) &&
+    day.notes.length
+  ) {
+    row = drawHomeUpcomingNotes_(sh, row, day.notes, theme);
+  }
 
   return row + 1;
 }
 
+
+/* =========================================================
+ * DAY HEADER
+ * ========================================================= */
+
+function drawHomeUpcomingDayHeader_(sh, row, day, theme) {
+  const title = buildHomeUpcomingDayHeaderText_(day);
+
+  sh.getRange(row, 1, 1, 9)
+    .merge()
+    .setValue(title)
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setFontWeight("bold")
+    .setFontColor(theme.gold)
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("middle")
+    .setBackground(theme.weeklyBlue)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      "#111111",
+      SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+
+  sh.setRowHeight(row, 24);
+
+  return row + 1;
+}
+
+
+function buildHomeUpcomingDayHeaderText_(day) {
+  day = day || {};
+
+  const dateLabel =
+    day.dateLabel ||
+    day.dayName ||
+    "";
+
+  if (day.dayOff) {
+    return [
+      dateLabel,
+      day.dayOff.title || "DAY OFF"
+    ]
+      .filter(Boolean)
+      .join("        ");
+  }
+
+  const summaries = [];
+
+  const events = Array.isArray(day.events)
+    ? day.events
+    : [];
+
+  events.forEach(function(event) {
+    const type = String(event.type || "").toLowerCase();
+
+    if (type === "rehearsal") {
+      summaries.push(
+        [
+          cleanHomeUpcomingEventTitle_(event.title),
+          buildHomeUpcomingTimeText_(
+            event.startTime,
+            event.endTime
+          )
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+    }
+
+    if (type === "performance") {
+      summaries.push(
+        [
+          event.title || "Performance",
+          normalizeHomeUpcomingTime_(event.startTime)
+        ]
+          .filter(Boolean)
+          .join(" - ")
+      );
+    }
+  });
+
+  return [
+    dateLabel,
+    summaries.join(" + ")
+  ]
+    .filter(Boolean)
+    .join("        ");
+}
+
+
+/* =========================================================
+ * DAY OFF
+ * ========================================================= */
+
+function drawHomeUpcomingDayOff_(sh, row, dayOff, theme) {
+  sh.getRange(row, 1, 1, 9)
+    .merge()
+    .setValue(dayOff.title || "AEA DAY OFF")
+    .setFontFamily("Arial")
+    .setFontSize(11)
+    .setFontWeight("bold")
+    .setFontColor(theme.mutedText)
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setBackground("#FFFFFF")
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID
+    );
+
+  sh.setRowHeight(row, 34);
+
+  return row + 1;
+}
+
+
+/* =========================================================
+ * EVENT ROW
+ * ========================================================= */
+
+function drawHomeUpcomingEventRow_(sh, row, event, theme) {
+  event = event || {};
+
+  const type =
+    String(event.type || "")
+      .toLowerCase();
+
+  const timeText =
+    buildHomeUpcomingTimeText_(
+      event.startTime,
+      event.endTime
+    );
+
+  const eventTitle =
+    cleanHomeUpcomingEventTitle_(
+      event.title
+    );
+
+  const whoText =
+    buildHomeUpcomingWhoText_(
+      event,
+      type
+    );
+
+  const eventDetails =
+    buildHomeUpcomingEventDetails_(
+      event,
+      type
+    );
+
+  /*
+   * TIME — columns A:B
+   */
+  sh.getRange(row, 1, 1, 2)
+    .merge()
+    .setValue(timeText)
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setFontWeight("bold")
+    .setFontColor(
+      type === "rehearsal"
+        ? theme.linkBlue
+        : "#111111"
+    )
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setWrap(true)
+    .setBackground("#FFFFFF");
+
+  /*
+   * EVENT — columns C:F
+   */
+  const eventCell =
+    sh.getRange(row, 3, 1, 4)
+      .merge()
+      .setValue(
+        eventDetails
+          ? eventTitle + "\n" + eventDetails
+          : eventTitle
+      )
+      .setFontFamily("Arial")
+      .setFontSize(10)
+      .setFontColor(
+        type === "rehearsal"
+          ? theme.linkBlue
+          : "#111111"
+      )
+      .setHorizontalAlignment("left")
+      .setVerticalAlignment("middle")
+      .setWrap(true)
+      .setBackground("#FFFFFF");
+
+  if (type === "performance") {
+    eventCell.setFontWeight("bold");
+  }
+
+  /*
+   * WHO — columns G:I
+   */
+  sh.getRange(row, 7, 1, 3)
+    .merge()
+    .setValue(whoText)
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setFontColor(
+      type === "rehearsal"
+        ? theme.linkBlue
+        : "#111111"
+    )
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("middle")
+    .setWrap(true)
+    .setBackground("#FFFFFF");
+
+  sh.getRange(row, 1, 1, 9)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID
+    );
+
+  const height =
+    eventDetails ||
+    whoText.length > 45
+      ? 46
+      : 30;
+
+  sh.setRowHeight(row, height);
+
+  return row + 1;
+}
+
+
+/* =========================================================
+ * GOLD PERFORMANCE DIVIDER
+ * ========================================================= */
+
+function drawHomeUpcomingGoldDivider_(sh, row, theme) {
+  sh.getRange(row, 1, 1, 9)
+    .merge()
+    .setValue("")
+    .setBackground(theme.gold)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      "#111111",
+      SpreadsheetApp.BorderStyle.SOLID
+    );
+
+  sh.setRowHeight(row, 5);
+
+  return row + 1;
+}
+
+
+/* =========================================================
+ * CAST / CREW
+ * ========================================================= */
+
+function drawHomeUpcomingCastCrew_(sh, row, castChanges, theme) {
+  const lines = buildHomeUpcomingCastCrewLines_(castChanges);
+
+  if (!lines.length) {
+    return row;
+  }
+
+  sh.getRange(row, 1, 1, 2)
+    .merge()
+    .setValue("NOTES:")
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("top")
+    .setBackground("#FFFFFF");
+
+  sh.getRange(row, 3, 1, 7)
+    .merge()
+    .setValue(lines.join("\n"))
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("top")
+    .setWrap(true)
+    .setBackground("#FFFFFF");
+
+  sh.getRange(row, 1, 1, 9)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID
+    );
+
+  sh.setRowHeight(
+    row,
+    Math.min(
+      110,
+      22 + lines.length * 15
+    )
+  );
+
+  return row + 1;
+}
+
+
+function buildHomeUpcomingCastCrewLines_(values) {
+  return (Array.isArray(values) ? values : [])
+    .map(function(value) {
+      let text = String(value || "").trim();
+
+      if (!text) {
+        return "";
+      }
+
+      /*
+       * Keep the Weekly Schedule's simple note language.
+       */
+      if (text.charAt(0) !== "-") {
+        text = "- " + text;
+      }
+
+      return text;
+    })
+    .filter(Boolean);
+}
+
+
+/* =========================================================
+ * PT
+ * ========================================================= */
+
+function drawHomeUpcomingPt_(sh, row, ptSummary, theme) {
+  const slots =
+    Array.isArray(ptSummary.slots)
+      ? ptSummary.slots
+      : [];
+
+  const detailLines = slots.map(function(slot) {
+    const appointment =
+      String(slot.appointment || "").trim();
+
+    return [
+      slot.timeText || "",
+      appointment || "OPEN"
+    ]
+      .filter(Boolean)
+      .join(" — ");
+  });
+
+  const summaryLine =
+    ptSummary.filledCount +
+    " of " +
+    ptSummary.totalSlots +
+    " slots filled";
+
+  sh.getRange(row, 1, 1, 2)
+    .merge()
+    .setValue("PT:")
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setFontWeight("bold")
+    .setFontColor(theme.linkBlue)
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("top")
+    .setBackground("#FFFFFF");
+
+  sh.getRange(row, 3, 1, 7)
+    .merge()
+    .setValue(
+      detailLines
+        .concat([summaryLine])
+        .join("\n")
+    )
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setFontColor(theme.linkBlue)
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("top")
+    .setWrap(true)
+    .setBackground("#FFFFFF");
+
+  sh.getRange(row, 1, 1, 9)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID
+    );
+
+  sh.setRowHeight(
+    row,
+    Math.min(
+      120,
+      26 + detailLines.length * 15
+    )
+  );
+
+  return row + 1;
+}
+
+
+/* =========================================================
+ * GENERAL NOTES
+ * ========================================================= */
+
+function drawHomeUpcomingNotes_(sh, row, notes, theme) {
+  const lines = uniqueHomeUpcomingStrings_(notes)
+    .map(function(note) {
+      const text = String(note || "").trim();
+
+      if (!text) {
+        return "";
+      }
+
+      return text.charAt(0) === "-"
+        ? text
+        : "- " + text;
+    })
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return row;
+  }
+
+  sh.getRange(row, 1, 1, 2)
+    .merge()
+    .setValue("NOTES:")
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("top")
+    .setBackground("#FFFFFF");
+
+  sh.getRange(row, 3, 1, 7)
+    .merge()
+    .setValue(lines.join("\n"))
+    .setFontFamily("Arial")
+    .setFontSize(10)
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("top")
+    .setWrap(true)
+    .setBackground("#FFFFFF");
+
+  sh.getRange(row, 1, 1, 9)
+    .setBorder(
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      theme.borderColor,
+      SpreadsheetApp.BorderStyle.SOLID
+    );
+
+  sh.setRowHeight(
+    row,
+    Math.min(
+      120,
+      22 + lines.length * 15
+    )
+  );
+
+  return row + 1;
+}
+
+
+/* =========================================================
+ * DISPLAY HELPERS
+ * ========================================================= */
+
+function cleanHomeUpcomingEventTitle_(value) {
+  let text =
+    String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (!text) {
+    return "";
+  }
+
+  if (/UNDERSTUDY\s+REH/i.test(text)) {
+    return "Understudy Rehearsal";
+  }
+
+  if (/ONSTAGE\s+REH/i.test(text)) {
+    return "Onstage Rehearsal";
+  }
+
+  if (/REHEARSAL/i.test(text)) {
+    return text
+      .replace(/\bTBD\b/gi, "")
+      .replace(/\bREH\b/gi, "Rehearsal")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  return text;
+}
+
+
+function buildHomeUpcomingEventDetails_(event, type) {
+  event = event || {};
+
+  const details = [];
+
+  if (type === "rehearsal") {
+    if (event.location) {
+      details.push(
+        "Location: " +
+        event.location
+      );
+    }
+
+    if (event.requiresReview) {
+      details.push(
+        "NEEDS REVIEW"
+      );
+    }
+  }
+
+  if (
+    type === "performance" &&
+    event.conductor
+  ) {
+    details.push(
+      "Conductor: " +
+      event.conductor
+    );
+  }
+
+  return details.join(" • ");
+}
+
+
+function buildHomeUpcomingWhoText_(event, type) {
+  event = event || {};
+
+  let who =
+    Array.isArray(event.who)
+      ? event.who.slice()
+      : [event.who];
+
+  who = who
+    .map(function(value) {
+      return String(value || "").trim();
+    })
+    .filter(Boolean);
+
+  /*
+   * Remove generic Team SM from the Who column.
+   * Keep named SMs or other specific calls.
+   */
+  if (type === "rehearsal") {
+    who = who.filter(function(value) {
+      return value.toUpperCase() !== "TEAM SM";
+    });
+  }
+
+  return uniqueHomeUpcomingStrings_(who)
+    .join(", ");
+}
+
+
+function buildHomeUpcomingTimeText_(startTime, endTime) {
+  const start =
+    normalizeHomeUpcomingTime_(
+      startTime
+    );
+
+  const end =
+    normalizeHomeUpcomingTime_(
+      endTime
+    );
+
+  if (start && end) {
+    return start + " - " + end;
+  }
+
+  return start || end;
+}
+
+
+function normalizeHomeUpcomingTime_(value) {
+  return String(value || "")
+    .trim()
+    .replace(
+      /(\d)(AM|PM)\b/gi,
+      "$1 $2"
+    )
+    .replace(/\s+/g, " ");
+}
+
+
+function uniqueHomeUpcomingStrings_(values) {
+  const seen = {};
+
+  return (Array.isArray(values) ? values : [])
+    .map(function(value) {
+      return String(value || "").trim();
+    })
+    .filter(function(value) {
+      if (!value) {
+        return false;
+      }
+
+      const key =
+        value.toUpperCase();
+
+      if (seen[key]) {
+        return false;
+      }
+
+      seen[key] = true;
+      return true;
+    });
+}
+
+
+/* =========================================================
+ * THEME
+ * ========================================================= */
+
+function getHomeUpcomingTheme_() {
+  return {
+    darkBlue: "#173B73",
+    weeklyBlue: "#1155CC",
+    linkBlue: "#0000FF",
+    gold: "#FFD11A",
+    headerFill: "#F3F3F3",
+    borderColor: "#222222",
+    mutedText: "#777777"
+  };
+}
 
 /* =========================================================
  * UPCOMING DATA
@@ -194,9 +952,6 @@ function getDashboardUpcomingFromWeekly_() {
     return [];
   }
 
-  /*
-   * Build all five target dates first.
-   */
   const targetDates = [];
 
   for (
@@ -208,22 +963,31 @@ function getDashboardUpcomingFromWeekly_() {
       new Date(
         startDate.getFullYear(),
         startDate.getMonth(),
-        startDate.getDate()
+        startDate.getDate() +
+          offset
       );
-
-    date.setDate(
-      date.getDate() +
-      offset
-    );
 
     targetDates.push(
       date
     );
   }
 
-  /*
-   * Read the external PT workbook only once.
-   */
+  if (
+    typeof WeeklyScheduleOS !==
+      "function"
+  ) {
+    throw new Error(
+      "Home Upcoming requires " +
+      "29 WEEKLY SCHEDULE OS."
+    );
+  }
+
+  const days =
+    WeeklyScheduleOS()
+      .getDays(
+        targetDates
+      );
+
   const ptMap =
     typeof getHomePTUpcomingMap_ ===
       "function"
@@ -232,412 +996,625 @@ function getDashboardUpcomingFromWeekly_() {
         )
       : {};
 
-  const timezone =
-    Session.getScriptTimeZone();
+  return days
+    .map(
+      function (day) {
+        const result =
+          buildDashboardUpcomingDayFromModel_(
+            day
+          );
 
-  const output = [];
+        /*
+         * Keep the newer external PT signup summary.
+         * PT remains in its own card rather than being
+         * repeated in this compact Weekly preview.
+         */
+        result.ptSummary =
+          ptMap[
+            day.date
+          ] || null;
 
-  targetDates.forEach(
-    function (date) {
-      const dateKey =
-        Utilities.formatDate(
-          date,
-          timezone,
-          "yyyy-MM-dd"
-        );
-
-      const upcomingDay =
-        getDashboardUpcomingForDate_(
-          date,
-          ptMap[dateKey] || null
-        );
-
-      if (
-        upcomingDay &&
-        Array.isArray(
-          upcomingDay.items
-        ) &&
-        upcomingDay.items.length
-      ) {
-        output.push(
-          upcomingDay
+        return result;
+      }
+    )
+    .filter(
+      function (day) {
+        return (
+          day.dayOff ||
+          day.events.length ||
+          day.castChanges.length ||
+          day.notes.length
         );
       }
-    }
+    );
+}
+
+
+/* =========================================================
+ * BUILD HOME DAY FROM WEEKLY MODEL
+ * ========================================================= */
+
+function buildDashboardUpcomingDayFromModel_(
+  day
+) {
+  day =
+    day || {};
+
+  const events = [];
+
+  /*
+   * Meetings
+   */
+  (day.meetings || [])
+    .forEach(
+      function (item) {
+        events.push(
+          buildUpcomingEvent_(
+            "meeting",
+            item.startTime,
+            item.endTime,
+            buildUpcomingMeetingTitle_(
+              item
+            ),
+            item.called,
+            item
+          )
+        );
+      }
+    );
+
+  /*
+   * Work calls
+   */
+  (day.workCalls || [])
+    .forEach(
+      function (item) {
+        events.push(
+          buildUpcomingEvent_(
+            "work_call",
+            item.startTime,
+            item.endTime,
+            item.title ||
+              "Work Call",
+            item.called,
+            item
+          )
+        );
+      }
+    );
+
+  /*
+   * Rehearsals
+   */
+  (day.rehearsals || [])
+    .filter(
+      function (item) {
+        return !item.canceled;
+      }
+    )
+    .forEach(
+      function (item) {
+        events.push(
+          buildUpcomingEvent_(
+            "rehearsal",
+            item.startTime,
+            item.endTime,
+            buildUpcomingRehearsalTitle_(
+              item
+            ),
+            item.called,
+            item
+          )
+        );
+      }
+    );
+
+  /*
+   * Put-ins
+   */
+  (day.putIns || [])
+    .forEach(
+      function (item) {
+        events.push(
+          buildUpcomingEvent_(
+            "put_in",
+            item.startTime,
+            item.endTime,
+            item.title ||
+              "Put-In",
+            buildUpcomingPutInWho_(
+              item
+            ),
+            item
+          )
+        );
+      }
+    );
+
+  /*
+   * Company events
+   */
+  (day.companyEvents || [])
+    .forEach(
+      function (item) {
+        events.push(
+          buildUpcomingEvent_(
+            "company_event",
+            item.startTime,
+            item.endTime,
+            item.title ||
+              "Company Activity",
+            item.people,
+            item
+          )
+        );
+      }
+    );
+
+  /*
+   * Performances
+   */
+  (day.performances || [])
+    .forEach(
+      function (item) {
+        events.push(
+          buildUpcomingEvent_(
+            "performance",
+            item.time,
+            "",
+            buildUpcomingPerformanceTitle_(
+              item
+            ),
+            "Full Company",
+            item
+          )
+        );
+      }
+    );
+
+  events.sort(
+    compareUpcomingEvents_
   );
 
-  return output;
-}
-
-
-/* =========================================================
- * UPCOMING DATE MODEL
- * ========================================================= */
-
-function getDashboardUpcomingForDate_(
-  date,
-  ptDay
-) {
-  if (
-    !(date instanceof Date) ||
-    isNaN(date.getTime())
-  ) {
-    return null;
-  }
-
-  const timezone =
-    Session.getScriptTimeZone();
-
-  const day =
-    Utilities
-      .formatDate(
-        date,
-        timezone,
-        "EEEE"
-      )
-      .toUpperCase();
-
-  const month =
-    Utilities
-      .formatDate(
-        date,
-        timezone,
-        "MMMM"
-      )
-      .toUpperCase();
-
-  const dayNum =
-    String(
-      Number(
-        Utilities.formatDate(
-          date,
-          timezone,
-          "d"
+  const castChanges =
+    []
+      .concat(
+        buildUpcomingOutLines_(
+          day.castOuts,
+          "CAST"
         )
       )
-    );
-
-  const dateKey =
-    Utilities.formatDate(
-      date,
-      timezone,
-      "yyyy-MM-dd"
-    );
-
-  /*
-   * Passing the Date first routes through WeeklyCacheOS.
-   */
-  const weeklyInfo =
-    findWeeklySheetAndDayRow_(
-      date,
-      day,
-      month,
-      dayNum
-    );
-
-  const items = [];
-
-  if (weeklyInfo) {
-    addDashboardUpcomingWeeklyItems_(
-      items,
-      weeklyInfo
-    );
-  }
-
-  /*
-   * Add a compact PT line.
-   *
-   * Example:
-   * PT | Hana G • 2/6 Filled • 4 Open
-   */
-  if (
-    ptDay &&
-    typeof buildHomeUpcomingPTItem_ ===
-      "function"
-  ) {
-    const ptItem =
-      buildHomeUpcomingPTItem_(
-        ptDay
-      );
-
-    if (ptItem) {
-      items.push(
-        ptItem
-      );
-    }
-  }
-
-  return {
-    date:
-      date,
-
-    dateKey:
-      dateKey,
-
-    day:
-      titleCase_(day) +
-      ", " +
-      titleCase_(month) +
-      " " +
-      dayNum,
-
-    items:
-      items,
-
-    source:
-      weeklyInfo
-        ? weeklyInfo.source || ""
-        : "",
-
-    weeklyName:
-      weeklyInfo &&
-      weeklyInfo.sheet
-        ? weeklyInfo.sheet
-            .getName()
-        : ""
-  };
-}
-
-
-/* =========================================================
- * WEEKLY ITEMS
- * ========================================================= */
-
-function addDashboardUpcomingWeeklyItems_(
-  items,
-  weeklyInfo
-) {
-  const values =
-    weeklyInfo.values || [];
-
-  const dayStart =
-    Number(
-      weeklyInfo.dayStart
-    );
-
-  if (
-    !values.length ||
-    isNaN(dayStart)
-  ) {
-    return items;
-  }
-
-  const dayEnd =
-    weeklyInfo.dayEnd !==
-      undefined
-      ? Number(
-          weeklyInfo.dayEnd
+      .concat(
+        buildUpcomingOutLines_(
+          day.crewOuts,
+          "CREW"
         )
-      : findDayEnd_(
-          values,
-          dayStart
-        );
-
-  const performances =
-    findPerformancesForWeeklyDay_(
-      values,
-      dayStart,
-      dayEnd
-    ) || [];
+      );
 
   const notes =
-    getNotesAndHolidayFromWeeklyDay_(
-      values,
-      dayStart,
-      dayEnd
-    ) || "";
-
-  const rehearsals =
-    getDashboardRehearsalsForWeeklyDay_(
-      values,
-      dayStart,
-      dayEnd
-    );
-
-  const castChanges =
-    getDashboardCastChangesForWeeklyDay_(
-      values,
-      dayStart,
-      dayEnd
-    );
-
-  if (performances.length) {
-    items.push({
-      label:
-        "Performance",
-
-      detail:
-        performances
+    []
+      .concat(
+        (day.holidays || [])
           .map(
-            function (performance) {
-              performance =
-                performance || {};
-
+            function (item) {
               return (
-                performance.inOutText ||
-                performance.label ||
-                (
-                  performance.number
-                    ? (
-                        "PERFORMANCE #" +
-                        performance.number
-                      )
-                    : ""
-                )
+                item.title ||
+                item.notes ||
+                ""
               );
             }
           )
-          .filter(Boolean)
-          .join("\n")
-    });
+      )
+      .concat(
+        (day.notes || [])
+          .map(
+            function (item) {
+              return (
+                item.text ||
+                ""
+              );
+            }
+          )
+      )
+      .filter(Boolean);
+
+  return {
+    date:
+      day.date || "",
+
+    dateLabel:
+      day.dateLabel || "",
+
+    dayOff:
+      day.dayOff || null,
+
+    events:
+      events,
+
+    castChanges:
+      castChanges,
+
+    notes:
+      uniqueUpcomingStrings_(
+        notes
+      ),
+
+    source:
+      day.source || ""
+  };
+}
+/* =========================================================
+ * EVENT BUILDERS
+ * ========================================================= */
+
+function buildUpcomingEvent_(
+  type,
+  startTime,
+  endTime,
+  title,
+  who,
+  sourceItem
+) {
+  sourceItem =
+    sourceItem || {};
+
+  return {
+    type:
+      type || "event",
+
+    startTime:
+      String(
+        startTime || ""
+      ).trim(),
+
+    endTime:
+      String(
+        endTime || ""
+      ).trim(),
+
+    title:
+      String(
+        title || ""
+      ).trim(),
+
+    who:
+      Array.isArray(who)
+        ? who.filter(Boolean)
+        : String(
+            who || ""
+          ).trim(),
+
+    location:
+      String(
+        sourceItem.location || ""
+      ).trim(),
+
+    conductor:
+      String(
+        sourceItem.conductor || ""
+      ).trim(),
+
+    requiresReview:
+      Boolean(
+        sourceItem.requiresReview
+      ),
+
+    notes:
+      String(
+        sourceItem.notes || ""
+      ).trim(),
+
+    rehearsalPianist:
+      String(
+        sourceItem.rehearsalPianist || ""
+      ).trim(),
+
+    musicDirector:
+      String(
+        sourceItem.musicDirector || ""
+      ).trim(),
+
+    stageManagement:
+      Array.isArray(
+        sourceItem.stageManagement
+      )
+        ? sourceItem.stageManagement.filter(Boolean)
+        : [],
+
+    crewDepartments:
+      Array.isArray(
+        sourceItem.crewDepartments
+      )
+        ? sourceItem.crewDepartments.filter(Boolean)
+        : []
+  };
+}
+
+function buildUpcomingRehearsalTitle_(
+  rehearsal
+) {
+  rehearsal =
+    rehearsal || {};
+
+  const rawTitle =
+    String(
+      rehearsal.title ||
+      "Rehearsal"
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  /*
+   * The WeeklyOS title is already the reviewed title.
+   * Do not append pianist, music director, creative team,
+   * stage management, or called people to the Event column.
+   */
+  return rawTitle;
+}
+
+
+function buildUpcomingPerformanceTitle_(
+  performance
+) {
+  performance =
+    performance || {};
+
+  const number =
+    String(
+      performance
+        .performanceNumber ||
+      ""
+    ).trim();
+
+  if (number) {
+    return (
+      "Performance #" +
+      number
+    );
   }
 
-  if (rehearsals.length) {
-    items.push({
-      label:
-        "Rehearsal",
+  return (
+    performance.label ||
+    "Performance"
+  );
+}
 
-      detail:
-        rehearsals.join("\n")
-    });
-  }
 
-  if (castChanges.length) {
-    items.push({
-      label:
-        "Cast Changes",
+function buildUpcomingPutInWho_(
+  putIn
+) {
+  putIn =
+    putIn || {};
 
-      detail:
-        castChanges.join("\n")
-    });
-  }
+  const people = [];
 
-  if (notes) {
-    items.push({
-      label:
-        "Notes",
+  (putIn.assignments || [])
+    .forEach(
+      function (assignment) {
+        if (!assignment) {
+          return;
+        }
 
-      detail:
-        String(notes)
-          .replace(/\r/g, "")
-          .replace(/\n{2,}/g, "\n")
-          .trim()
-    });
-  }
+        const name =
+          assignment.person ||
+          assignment.actor ||
+          assignment.name ||
+          "";
 
-  return items;
+        if (name) {
+          people.push(
+            name
+          );
+        }
+      }
+    );
+
+  (putIn.segments || [])
+    .forEach(
+      function (segment) {
+        (segment.called || [])
+          .forEach(
+            function (name) {
+              people.push(
+                name
+              );
+            }
+          );
+      }
+    );
+
+  return uniqueUpcomingStrings_(
+    people
+  );
 }
 
 
 /* =========================================================
- * WEEKLY SCANNERS
+ * OUTS
  * ========================================================= */
 
-function getDashboardRehearsalsForWeeklyDay_(
-  values,
-  dayStart,
-  dayEnd
+function buildUpcomingOutLines_(
+  outs,
+  category
 ) {
-  const rehearsals = [];
+  return (
+    Array.isArray(outs)
+      ? outs
+      : []
+  )
+    .map(
+      function (item) {
+        item =
+          item || {};
 
-  for (
-    let rowIndex = dayStart;
-    rowIndex < dayEnd;
-    rowIndex++
-  ) {
-    const row =
-      values[rowIndex] || [];
+        const person =
+          item.person || "";
 
-    const rowText =
-      row
-        .slice(0, 5)
-        .join(" ");
+        const descriptor =
+          category === "CREW"
+            ? item.department
+            : item.role;
 
-    const cleanText =
-      String(rowText || "")
-        .replace(/\s+/g, " ")
-        .trim();
+        const coverage =
+          item.coverage
+            ? (
+                " — " +
+                item.coverage +
+                " IN"
+              )
+            : "";
 
-    if (!cleanText) {
-      continue;
-    }
-
-    const upper =
-      cleanText.toUpperCase();
-
-    if (
-      upper.includes("REHEARSAL") ||
-      upper.includes("PUT-IN") ||
-      upper.includes("PUT IN") ||
-      upper.includes("BRUSH-UP") ||
-      upper.includes("BRUSH UP") ||
-      upper.includes("COMPANY MEETING")
-    ) {
-      rehearsals.push(
-        cleanText
-      );
-    }
-  }
-
-  return Array.from(
-    new Set(rehearsals)
-  ).slice(0, 4);
+        return [
+          person,
+          descriptor
+            ? "(" +
+              descriptor +
+              ")"
+            : ""
+        ]
+          .filter(Boolean)
+          .join(" ") +
+          " OUT" +
+          coverage;
+      }
+    )
+    .filter(Boolean);
 }
 
 
-function getDashboardCastChangesForWeeklyDay_(
-  values,
-  dayStart,
-  dayEnd
+/* =========================================================
+ * SORTING / FORMATTING
+ * ========================================================= */
+
+function compareUpcomingEvents_(
+  a,
+  b
 ) {
-  const changes = [];
+  return (
+    upcomingTimeSortValue_(
+      a.startTime
+    ) -
+    upcomingTimeSortValue_(
+      b.startTime
+    )
+  );
+}
 
-  for (
-    let rowIndex = dayStart;
-    rowIndex < dayEnd;
-    rowIndex++
-  ) {
-    const row =
-      values[rowIndex] || [];
 
-    const rowText =
-      row
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim();
+function upcomingTimeSortValue_(
+  value
+) {
+  const text =
+    String(value || "")
+      .toUpperCase()
+      .trim();
 
-    if (!rowText) {
-      continue;
-    }
+  const match =
+    text.match(
+      /(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/
+    );
 
-    const upper =
-      rowText.toUpperCase();
-
-    /*
-     * Do not treat Weekly note bullets as separate
-     * cast-change rows.
-     */
-    if (
-      rowText.startsWith("-") ||
-      upper.includes("NOTES:")
-    ) {
-      continue;
-    }
-
-    if (
-      upper.includes(" OUT") ||
-      upper.includes(" IN") ||
-      upper.includes("OFFICE SHOW")
-    ) {
-      changes.push(
-        rowText
-      );
-    }
+  if (!match) {
+    return 999999;
   }
 
-  return Array.from(
-    new Set(changes)
-  ).slice(0, 4);
+  let hour =
+    Number(match[1]);
+
+  const minute =
+    Number(
+      match[2] || 0
+    );
+
+  const meridiem =
+    match[3];
+
+  if (
+    meridiem === "PM" &&
+    hour !== 12
+  ) {
+    hour += 12;
+  }
+
+  if (
+    meridiem === "AM" &&
+    hour === 12
+  ) {
+    hour = 0;
+  }
+
+  return (
+    hour * 60 +
+    minute
+  );
+}
+
+
+function buildUpcomingTimeText_(
+  startTime,
+  endTime
+) {
+  const start =
+    String(
+      startTime || ""
+    ).trim();
+
+  const end =
+    String(
+      endTime || ""
+    ).trim();
+
+  if (
+    start &&
+    end
+  ) {
+    return (
+      start +
+      "–" +
+      end
+    );
+  }
+
+  return start || end;
+}
+
+
+function uniqueUpcomingStrings_(
+  values
+) {
+  const seen = {};
+
+  return (
+    Array.isArray(values)
+      ? values
+      : []
+  )
+    .map(
+      function (value) {
+        return String(
+          value || ""
+        ).trim();
+      }
+    )
+    .filter(
+      function (value) {
+        if (!value) {
+          return false;
+        }
+
+        const key =
+          value.toUpperCase();
+
+        if (seen[key]) {
+          return false;
+        }
+
+        seen[key] =
+          true;
+
+        return true;
+      }
+    );
 }
 
 
@@ -648,10 +1625,6 @@ function getDashboardCastChangesForWeeklyDay_(
 function testHomeUpcoming_DEV() {
   const upcoming =
     getDashboardUpcomingFromWeekly_();
-
-  Logger.log(
-    "HOME UPCOMING TEST"
-  );
 
   Logger.log(
     JSON.stringify(
@@ -665,38 +1638,10 @@ function testHomeUpcoming_DEV() {
     .getUi()
     .alert(
       "Home Upcoming test complete.\n\n" +
-      "Upcoming days found: " +
+      "Days found: " +
       upcoming.length +
-      "\n" +
-      "PT summaries: " +
-      upcoming.reduce(
-        function (
-          count,
-          day
-        ) {
-          const hasPT =
-            Array.isArray(
-              day.items
-            ) &&
-            day.items.some(
-              function (item) {
-                return (
-                  item &&
-                  item.type ===
-                    "pt"
-                );
-              }
-            );
-
-          return count +
-            (
-              hasPT
-                ? 1
-                : 0
-            );
-        },
-        0
-      )
+      "\n\n" +
+      "See Executions → Logs for the model."
     );
 
   return upcoming;

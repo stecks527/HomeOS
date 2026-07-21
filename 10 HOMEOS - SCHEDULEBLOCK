@@ -1,0 +1,1686 @@
+/*************************************************
+ * HOMEOS 3.0
+ * Schedule Block Model
+ *
+ * Canonical constructor for every Schedule Block.
+ *
+ * All renderers (Today, Timeline, Mission Current
+ * Show, Live Updates) should eventually consume
+ * this object instead of creating their own state.
+ *************************************************/
+
+function createScheduleBlock_(config) {
+  config = config || {};
+
+  const displayStart =
+    config.displayStart != null
+      ? config.displayStart
+      : config.startMinutes;
+
+  const displayEnd =
+    config.displayEnd != null
+      ? config.displayEnd
+      : config.endMinutes;
+
+  const operationalStart =
+    config.operationalStart != null
+      ? config.operationalStart
+      : displayStart;
+
+  const operationalEnd =
+    config.operationalEnd != null
+      ? config.operationalEnd
+      : displayEnd;
+
+  const timelineEvents = (config.timelineEvents || []).slice();
+
+  return {
+
+    // identity
+    id: config.id || "",
+    type: config.type || "",
+    category: config.category || "",
+
+    // display
+    title: config.title || "",
+    subtitle: config.subtitle || "",
+    summary: config.summary || "",
+
+    // legacy metadata
+    header: config.header || "",
+    sourceObject: config.sourceObject || null,
+
+    // time
+    displayStart: displayStart,
+    displayEnd: displayEnd,
+
+    operationalStart: operationalStart,
+    operationalEnd: operationalEnd,
+
+    // backwards compatibility
+    startMinutes: displayStart,
+    endMinutes: displayEnd,
+    timeText: config.timeText || "",
+    endTimeText: config.endTimeText || "",
+
+    // timeline
+    timelineEvents: timelineEvents,
+    events: timelineEvents,
+
+    currentTimelineEvent: null,
+
+    // state
+    state: "upcoming",
+    isCurrent: false,
+    isPast: false,
+    isUpcoming: true
+  };
+}
+
+function updateScheduleBlockState_(block, nowMinutes) {
+
+  block.isPast = false;
+  block.isCurrent = false;
+  block.isUpcoming = false;
+
+  if (nowMinutes < block.operationalStart) {
+
+    block.state = "upcoming";
+    block.isUpcoming = true;
+
+  } else if (nowMinutes > block.operationalEnd) {
+
+    block.state = "past";
+    block.isPast = true;
+
+  } else {
+
+    block.state = "current";
+    block.isCurrent = true;
+
+  }
+
+  return block;
+}
+
+function updateTimelineEventStates_(block, nowMinutes) {
+
+  block.timelineEvents.forEach(function(event) {
+
+    event.isPast = false;
+    event.isCurrent = false;
+    event.isUpcoming = false;
+
+    if (nowMinutes < event.startMinutes) {
+
+      event.isUpcoming = true;
+
+    } else if (nowMinutes >= event.endMinutes) {
+
+      event.isPast = true;
+
+    } else {
+
+      event.isCurrent = true;
+      block.currentTimelineEvent = event;
+
+    }
+
+  });
+
+  return block;
+}
+
+function refreshScheduleBlockState_(block, nowMinutes) {
+
+  updateScheduleBlockState_(block, nowMinutes);
+
+  updateTimelineEventStates_(block, nowMinutes);
+
+  return block;
+}
+
+/*************************************************
+ * 10 HOMEOS - EVENTBLOCK
+ * Version: 1.2.0
+ *
+ * Canonical HomeOS event-block builder.
+ *
+ * Responsibility:
+ * - Identify the day's major events
+ * - Sort them chronologically
+ * - Assign TimelineOS entries to the correct event
+ * - Provide renderer-ready summaries and headers
+ *
+ * Sources of truth:
+ * - buildShowState()
+ * - buildTimelineOS(showState)
+ *
+ * Important:
+ * - showState.dailyActivities creates LEFT-side major blocks.
+ * - TimelineOS + note events remain the RIGHT-side timeline.
+ * - PT remains informational and is excluded from block call lists.
+ * - Activity blocks show the activity time plus the exact Crew Call.
+ * - Performance blocks show the performance call sequence.
+ *************************************************/
+
+function HomeEventBlockOS() {
+  return {
+    build: function (showState, timeline) {
+      return buildHomeV2EventBlocks_(showState, timeline);
+    }
+  };
+}
+
+function buildHomeV2EventBlocks_(showState, timeline) {
+  showState = showState || {};
+  timeline = timeline || {};
+
+  const events = getHomeV2TimelineEvents_(timeline, showState);
+
+  const anchors = []
+    .concat(buildHomeV2PerformanceEventAnchors_(showState))
+    .concat(buildHomeV2ActivityEventAnchors_(showState, events));
+
+  const blocks = dedupeHomeV2EventAnchors_(anchors)
+    .sort(compareHomeV2EventAnchors_);
+
+  if (!blocks.length) return [];
+
+  assignHomeV2TimelineEventsToBlocks_(blocks, events);
+applyHomeV2EventBlockHeaders_(blocks);
+
+/*************************************************
+ * HOMEOS 3.0
+ * Convert legacy Event Anchors into canonical
+ * Schedule Blocks.
+ *************************************************/
+
+return blocks.map(function (block) {
+
+  return createScheduleBlock_({
+
+    id: block.id,
+    type: block.type,
+    category: block.category,
+
+    title: block.title,
+    subtitle: block.subtitle,
+    summary: block.summary,
+
+    header: block.header,
+    sourceObject: block.sourceObject,
+
+    startMinutes: block.startMinutes,
+    endMinutes: block.endMinutes,
+
+    displayStart: block.displayStart,
+    displayEnd: block.displayEnd,
+
+    operationalStart: block.operationalStart,
+    operationalEnd: block.operationalEnd,
+
+    timeText: block.timeText,
+    endTimeText: block.endTimeText,
+
+    timelineEvents: block.events || []
+
+  });
+
+});
+}
+
+function buildHomeV2PerformanceEventAnchors_(showState) {
+  return getHomeV2Performances_(showState).map(function (performance, index) {
+    performance = performance || {};
+
+    const timeText = formatHomeV2PerformanceTime_(performance);
+    const performanceNumber =
+      performance.number || performance.performanceNumber || "";
+
+    return {
+      id: "PERFORMANCE_" + String(performanceNumber || index + 1),
+      type: "performance",
+      category: "Performance",
+      title: formatHomeV2PerformanceTitle_(performance),
+      timeText: timeText,
+      startMinutes: homeV2TimeSortValue_(timeText),
+      sourceObject: performance,
+      summary: {
+        title: formatHomeV2PerformanceTitle_(performance),
+        primary: timeText,
+        label: "Conductor",
+        value:
+          performance.conductor ||
+          getHomeConductorFromShowState_(showState) ||
+          ""
+      },
+      events: []
+    };
+  });
+}
+
+function buildHomeV2ActivityEventAnchors_(
+  showState,
+  timelineEvents
+) {
+  const anchors =
+    buildHomeV2ActivityAnchorsFromShowState_(
+      showState
+    );
+
+  /*
+   * Structured ShowState.dailyActivities is now
+   * the canonical source for major activity blocks.
+   *
+   * Timeline events remain call-list data only.
+   * Notes remain informational only.
+   */
+  return anchors;
+}
+
+function buildHomeV2ActivityAnchorsFromShowState_(
+  showState
+) {
+  const activities =
+    showState &&
+    Array.isArray(
+      showState.dailyActivities
+    )
+      ? showState.dailyActivities
+      : [];
+
+  return activities
+    .map(
+      function (
+        activity,
+        index
+      ) {
+        activity =
+          activity || {};
+
+        const combinedText =
+          buildHomeV2DailyActivityCombinedText_(
+            activity
+          );
+
+        if (
+          !isHomeV2MajorActivityText_(
+            combinedText
+          )
+        ) {
+          return null;
+        }
+
+        const timeText =
+          String(
+            activity.startTime ||
+            activity.timeText ||
+            ""
+          ).trim();
+
+        const endTimeText =
+          String(
+            activity.endTime ||
+            activity.endTimeText ||
+            ""
+          ).trim();
+
+        if (
+          homeV2TimeSortValue_(
+            timeText
+          ) === 9999999999999
+        ) {
+          return null;
+        }
+
+        const baseTitle =
+          getHomeV2MajorActivityTitle_(
+            {
+              category:
+                activity.type ||
+                "Activity",
+
+              title:
+                activity.title ||
+                "",
+
+              originalText:
+                combinedText
+            },
+            combinedText
+          );
+
+        const isRehearsal =
+          isHomeV2MajorActivityText_(
+            combinedText
+          ) &&
+          /\bREHEARSAL\b/i.test(
+            combinedText
+          );
+
+        const rehearsalInfo =
+          isRehearsal
+            ? parseHomeV2RehearsalActivity_(
+                activity
+              )
+            : null;
+
+        const blockTitle =
+          rehearsalInfo
+            ? rehearsalInfo.blockTitle
+            : baseTitle;
+
+        const normalDetail =
+          buildHomeV2DailyActivityDetail_(
+            activity,
+            baseTitle
+          );
+
+        return {
+          id:
+            "WEEKLY_ACTIVITY_" +
+            normalizeHomeV2EventBlockKey_(
+              blockTitle
+            ) +
+            "_" +
+            String(
+              homeV2TimeSortValue_(
+                timeText
+              )
+            ) +
+            "_" +
+            String(index),
+
+          type:
+            "activity",
+
+          category:
+            activity.type ||
+            "Activity",
+
+          title:
+            blockTitle,
+
+          timeText:
+            timeText,
+
+          endTimeText:
+            endTimeText,
+
+          startMinutes:
+            homeV2TimeSortValue_(
+              timeText
+            ),
+
+          sourceObject:
+            activity,
+
+          summary: {
+            title:
+              blockTitle,
+
+            primary:
+              timeText &&
+              endTimeText
+                ? (
+                    timeText +
+                    "–" +
+                    endTimeText
+                  )
+                : timeText,
+
+            label:
+              rehearsalInfo &&
+              rehearsalInfo.pianist
+                ? "Rehearsal Pianist"
+                : (
+                    normalDetail
+                      ? "Called"
+                      : ""
+                  ),
+
+            value:
+              rehearsalInfo &&
+              rehearsalInfo.pianist
+                ? rehearsalInfo.pianist
+                : normalDetail
+          },
+
+          events:
+            []
+        };
+      }
+    )
+    .filter(Boolean);
+}
+
+function buildHomeV2DailyActivityCombinedText_(activity) {
+  activity = activity || {};
+
+  return [
+    activity.title,
+    activity.participants,
+    activity.originalText,
+    activity.type
+  ]
+    .filter(Boolean)
+    .join(" | ")
+    .trim();
+}
+
+function buildHomeV2DailyActivityDetail_(activity, blockTitle) {
+  activity = activity || {};
+
+  /*
+   * The Weekly activity title already contains the useful call text.
+   * Do not append activity.participants here: on the current Weekly
+   * layout that repeats the called actor and creates a duplicate.
+   *
+   * A dedicated rehearsal-pianist field can be added later without
+   * changing the event-window architecture.
+   */
+  const title = String(activity.title || "").trim();
+
+  if (!title) {
+    return String(activity.participants || "").trim();
+  }
+
+  const genericTitle = normalizeHomeV2EventBlockKey_(blockTitle);
+  const titleKey = normalizeHomeV2EventBlockKey_(title);
+
+  if (titleKey === genericTitle) {
+    return String(activity.participants || "").trim();
+  }
+
+  return title;
+}
+
+function isHomeV2MajorActivityEvent_(event) {
+  event = event || {};
+
+  const category = String(event.category || "");
+
+  const text = [
+    category,
+    event.title,
+    event.originalText,
+    event.name,
+    event.type
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+
+  if (
+    category.toLowerCase() === "performance" ||
+    text.includes("PERFORMANCE #")
+  ) {
+    return false;
+  }
+
+  if (category.toUpperCase() === "PT" || isHomeV2PTOnlyText_(text)) {
+    return false;
+  }
+
+  return isHomeV2MajorActivityText_(text);
+}
+
+function buildHomeV2ActivityAnchorFromEvent_(event, index) {
+  event = event || {};
+
+  const originalText = String(
+    event.originalText || event.title || ""
+  ).trim();
+
+  const timeInfo = extractHomeV2TimeRange_(originalText);
+
+  const timeText = String(
+    event.timeText || timeInfo.startText || ""
+  ).trim();
+
+  const endTimeText = String(
+    event.endTimeText || timeInfo.endText || ""
+  ).trim();
+
+  const title = getHomeV2MajorActivityTitle_(event, originalText);
+
+  const location = String(
+    event.location ||
+      event.room ||
+      extractHomeV2Location_(originalText) ||
+      ""
+  ).trim();
+
+  return {
+    id:
+      "ACTIVITY_" +
+      normalizeHomeV2EventBlockKey_(title) +
+      "_" +
+      String(homeV2TimeSortValue_(timeText)) +
+      "_" +
+      String(index),
+    type: "activity",
+    category: event.category || "Activity",
+    title: title,
+    timeText: timeText,
+    endTimeText: endTimeText,
+    startMinutes: homeV2TimeSortValue_(timeText),
+    sourceObject: event,
+    summary: {
+      title: title,
+      primary:
+        timeText && endTimeText ? timeText + "–" + endTimeText : timeText,
+      label: location ? "Location" : "",
+      value: location
+    },
+    events: []
+  };
+}
+
+function buildHomeV2ActivityAnchorsFromNotes_(showState) {
+  const notes = normalizeHomeV2Notes_(showState && showState.notes);
+  if (!notes) return [];
+
+  return notes
+    .split(/\n+/)
+    .map(function (line) {
+      return String(line || "")
+        .replace(/^[-•]\s*/, "")
+        .trim();
+    })
+    .filter(Boolean)
+    .filter(function (line) {
+      return !isHomeV2PTOnlyText_(line) && isHomeV2MajorActivityText_(line);
+    })
+    .map(function (line, index) {
+      const timeInfo = extractHomeV2TimeRange_(line);
+
+      const title = getHomeV2MajorActivityTitle_(
+        {
+          category: isHomeV2RehearsalLine_(line)
+            ? "Rehearsal"
+            : "Activity",
+          originalText: line
+        },
+        line
+      );
+
+      const location = extractHomeV2Location_(line);
+
+      return {
+        id:
+          "NOTE_ACTIVITY_" +
+          normalizeHomeV2EventBlockKey_(title) +
+          "_" +
+          String(homeV2TimeSortValue_(timeInfo.startText)) +
+          "_" +
+          String(index),
+        type: "activity",
+        category: "Activity",
+        title: title,
+        timeText: timeInfo.startText || "",
+        endTimeText: timeInfo.endText || "",
+        startMinutes: homeV2TimeSortValue_(timeInfo.startText),
+        sourceObject: {
+          originalText: line
+        },
+        summary: {
+          title: title,
+          primary:
+            timeInfo.startText && timeInfo.endText
+              ? timeInfo.startText + "–" + timeInfo.endText
+              : timeInfo.startText || "",
+          label: location ? "Location" : "",
+          value: location || ""
+        },
+        events: []
+      };
+    });
+}
+
+function isHomeV2MajorActivityText_(text) {
+  const upper = String(text || "").toUpperCase();
+
+  if (isHomeV2PTOnlyText_(upper)) return false;
+
+  return (
+    /\bREHEARSAL\b/.test(upper) ||
+    /\bBRUSH[\s-]?UP\b/.test(upper) ||
+    /\bPUT[\s-]?IN\b/.test(upper) ||
+    /\bUNDERSTUDY\b/.test(upper) ||
+    /\bCOMPANY\s+MEETING\b/.test(upper) ||
+    /\bPRODUCTION\s+MEETING\b/.test(upper) ||
+    /\bWORK\s+CALL\b/.test(upper)
+  );
+}
+
+function isHomeV2PTOnlyText_(text) {
+  const upper = String(text || "").toUpperCase();
+
+  return (
+    /\bPHYSICAL\s+THERAPY\b/.test(upper) ||
+    (/\bPT\b/.test(upper) &&
+      !/\bREHEARSAL\b/.test(upper) &&
+      !/\bMEETING\b/.test(upper) &&
+      !/\bWORK\s+CALL\b/.test(upper))
+  );
+}
+
+function getHomeV2MajorActivityTitle_(event, fallbackText) {
+  event = event || {};
+
+  const text = String(
+    event.originalText || event.title || fallbackText || "ACTIVITY"
+  ).trim();
+
+  const upper = text.toUpperCase();
+
+  if (/\bMUSIC\s+REHEARSAL\b/.test(upper)) return "MUSIC REHEARSAL";
+  if (/\bBRUSH[\s-]?UP\b/.test(upper)) return "BRUSH-UP";
+  if (/\bPUT[\s-]?IN\b/.test(upper)) return "PUT-IN";
+
+  if (/\bUNDERSTUDY\b/.test(upper) && /\bREHEARSAL\b/.test(upper)) {
+    return "UNDERSTUDY REHEARSAL";
+  }
+
+  if (/\bCOMPANY\s+MEETING\b/.test(upper)) return "COMPANY MEETING";
+  if (/\bPRODUCTION\s+MEETING\b/.test(upper)) return "PRODUCTION MEETING";
+  if (/\bWORK\s+CALL\b/.test(upper)) return "WORK CALL";
+
+  if (/\bREHEARSAL\b/.test(upper)) {
+    try {
+      const rehearsalTitle = getHomeV2RehearsalTimelineTitle_(text);
+      if (rehearsalTitle) return String(rehearsalTitle).toUpperCase();
+    } catch (error) {
+      // Safe fallback below.
+    }
+
+    return "REHEARSAL";
+  }
+
+  return (
+    String(event.title || fallbackText || "ACTIVITY")
+      .replace(
+        /\b\d{1,2}:\d{2}\s*(?:AM|PM)?\s*[-–]\s*\d{1,2}:\d{2}\s*(?:AM|PM)?\b/gi,
+        ""
+      )
+      .replace(/\([^)]*\)/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .toUpperCase() || "ACTIVITY"
+  );
+}
+
+function dedupeHomeV2EventAnchors_(anchors) {
+  const seen = {};
+  const output = [];
+
+  (anchors || []).forEach(function (anchor) {
+    if (!anchor) return;
+
+    const key = [
+      anchor.type,
+      normalizeHomeV2EventBlockKey_(anchor.title),
+      String(anchor.startMinutes)
+    ].join("|");
+
+    if (seen[key]) return;
+
+    seen[key] = true;
+    output.push(anchor);
+  });
+
+  return output;
+}
+
+function normalizeHomeV2EventBlockKey_(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function compareHomeV2EventAnchors_(a, b) {
+  const aMinutes = Number(a && a.startMinutes);
+  const bMinutes = Number(b && b.startMinutes);
+
+  const safeA = isFinite(aMinutes) ? aMinutes : 9999999999999;
+  const safeB = isFinite(bMinutes) ? bMinutes : 9999999999999;
+
+  if (safeA !== safeB) return safeA - safeB;
+
+  if (a.type !== b.type) return a.type === "activity" ? -1 : 1;
+
+  return String(a.title || "").localeCompare(String(b.title || ""));
+}
+
+function assignHomeV2TimelineEventsToBlocks_(
+  blocks,
+  events
+) {
+  blocks =
+    Array.isArray(blocks)
+      ? blocks
+      : [];
+
+  events =
+    Array.isArray(events)
+      ? events
+      : [];
+
+  /*
+   * Begin every block with its synthetic major-event row.
+   */
+  blocks.forEach(
+    function (block) {
+      block.events = [];
+
+      if (
+        block.type ===
+        "activity"
+      ) {
+        const activityEvent =
+          buildHomeV2ActivityTimelineEvent_(
+            block
+          );
+
+        if (activityEvent) {
+          block.events.push(
+            activityEvent
+          );
+        }
+      }
+    }
+  );
+
+  events.forEach(
+    function (event) {
+      event =
+        event || {};
+
+      /*
+       * Team SM Arrival receives explicit routing.
+       *
+       * Do this before the ordinary operational-event
+       * filters so it cannot be lost.
+       */
+      if (
+        isHomeV2TeamSMArrival_(
+          event
+        )
+      ) {
+        const activityIndex =
+          findHomeV2NextActivityBlockIndex_(
+            blocks,
+            event
+          );
+
+        if (
+          activityIndex >= 0 &&
+          blocks[activityIndex]
+        ) {
+          blocks[
+            activityIndex
+          ].events.push(
+            normalizeHomeV2TeamSMArrivalEvent_(
+              event
+            )
+          );
+        }
+
+        return;
+      }
+
+      if (
+        !shouldHomeV2UseOperationalTimelineEvent_(
+          event
+        )
+      ) {
+        return;
+      }
+
+      const destinationIndex =
+        findHomeV2EventBlockForTimelineEvent_(
+          blocks,
+          event
+        );
+
+      const destinationBlock =
+        blocks[
+          destinationIndex
+        ];
+
+      if (!destinationBlock) {
+        return;
+      }
+
+      if (
+        !shouldHomeV2IncludeEventInBlock_(
+          destinationBlock,
+          event
+        )
+      ) {
+        return;
+      }
+
+      destinationBlock.events.push(
+        event
+      );
+    }
+  );
+
+  blocks.forEach(
+    function (block) {
+      block.events =
+        dedupeHomeV2BlockTimelineEvents_(
+          block.events
+        )
+          .sort(
+            compareHomeV2TimelineEventsForBlock_
+          );
+    }
+  );
+}
+
+function isHomeV2TeamSMArrival_(
+  event
+) {
+  event =
+    event || {};
+
+  const text =
+    [
+      event.title,
+      event.name,
+      event.originalText,
+      event.category,
+      event.type
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toUpperCase();
+
+  return (
+    /\bTEAM\s+SM\s+ARRIVAL\b/.test(
+      text
+    ) ||
+    /\bSM\s+TEAM\s+ARRIVAL\b/.test(
+      text
+    ) ||
+    /\bSTAGE\s+MANAGEMENT\s+ARRIVAL\b/.test(
+      text
+    )
+  );
+}
+
+
+function findHomeV2NextActivityBlockIndex_(
+  blocks,
+  event
+) {
+  const eventMinutes =
+    getHomeV2TimelineSortValue_(
+      event
+    );
+
+  let fallbackIndex =
+    -1;
+
+  for (
+    let index = 0;
+    index < blocks.length;
+    index++
+  ) {
+    const block =
+      blocks[index] || {};
+
+    if (
+      block.type !==
+      "activity"
+    ) {
+      continue;
+    }
+
+    if (
+      fallbackIndex < 0
+    ) {
+      fallbackIndex =
+        index;
+    }
+
+    const blockMinutes =
+      Number(
+        block.startMinutes
+      );
+
+    if (
+      isFinite(
+        eventMinutes
+      ) &&
+      isFinite(
+        blockMinutes
+      ) &&
+      eventMinutes <=
+        blockMinutes
+    ) {
+      return index;
+    }
+  }
+
+  return fallbackIndex;
+}
+
+
+function normalizeHomeV2TeamSMArrivalEvent_(
+  event
+) {
+  event =
+    event || {};
+
+  return {
+    category:
+      "Stage Management",
+
+    title:
+      "Team SM Arrival",
+
+    timeText:
+      String(
+        event.timeText ||
+        event.startTime ||
+        ""
+      ).trim(),
+
+    endTimeText:
+      "",
+
+    appliesTo:
+      String(
+        event.appliesTo ||
+        event.who ||
+        event.participants ||
+        ""
+      )
+        .replace(/\s+/g, " ")
+        .trim(),
+
+    originalText:
+      String(
+        event.originalText ||
+        event.title ||
+        ""
+      ).trim(),
+
+    source:
+      event.source ||
+      "TimelineOS",
+
+    synthetic:
+      false
+  };
+}
+
+function buildHomeV2ActivityTimelineEvent_(
+  block
+) {
+  block =
+    block || {};
+
+  const source =
+    block.sourceObject || {};
+
+  const timeText =
+    String(
+      block.timeText || ""
+    ).trim();
+
+  if (!timeText) {
+    return null;
+  }
+
+  return {
+    category:
+      source.type ||
+      block.category ||
+      "Activity",
+
+    /*
+     * Event column contains only what is happening.
+     *
+     * Example:
+     * Rehearsal (Tablework + Music)
+     *
+     * Pianists, SMs, and other supporting personnel
+     * do not belong in this title.
+     */
+    title:
+      cleanHomeV2ActivityEventTitle_(
+        block.title ||
+        source.type ||
+        "Activity"
+      ),
+
+    timeText:
+      timeText,
+
+    endTimeText:
+      String(
+        block.endTimeText || ""
+      ).trim(),
+
+    /*
+     * The Who column contains only the people called
+     * to participate in the activity.
+     */
+    appliesTo:
+      String(
+        source.participants || ""
+      )
+        .replace(/\s+/g, " ")
+        .trim(),
+
+    originalText:
+      String(
+        source.title ||
+        source.originalText ||
+        ""
+      ).trim(),
+
+    source:
+      "ShowState dailyActivities",
+
+    synthetic:
+      true
+  };
+}
+
+
+function cleanHomeV2ActivityEventTitle_(
+  value
+) {
+  let title =
+    String(
+      value || "Activity"
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  /*
+   * Remove anything beginning with w/ or with.
+   * Supporting personnel belong in the left card,
+   * not the Event column.
+   */
+  title =
+    title.replace(
+      /\s+(?:w\/|with)\s+.*$/i,
+      ""
+    );
+
+  /*
+   * Remove SM assignment text if it reached the title.
+   */
+  title =
+    title.replace(
+      /\s+SMs?\s*=.*$/i,
+      ""
+    );
+
+  title =
+    title
+      .replace(/[,:;\s]+$/, "")
+      .trim();
+
+  return (
+    toHomeV2DisplayCase_(
+      title
+    ) ||
+    "Activity"
+  );
+}
+
+function parseHomeV2RehearsalActivity_(
+  activity
+) {
+  activity =
+    activity || {};
+
+  const title =
+    String(
+      activity.title ||
+      activity.originalText ||
+      ""
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const participants =
+    String(
+      activity.participants ||
+      ""
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const rehearsalType =
+    extractHomeV2RehearsalType_(
+      title
+    );
+
+  const pianist =
+    extractHomeV2RehearsalPianist_(
+      title
+    );
+
+  const called =
+    participants ||
+    extractHomeV2RehearsalCalled_(
+      title
+    );
+
+  return {
+    rehearsalType:
+      rehearsalType,
+
+    pianist:
+      pianist,
+
+    called:
+      called,
+
+    blockTitle:
+      rehearsalType
+        ? (
+            "REHEARSAL (" +
+            rehearsalType +
+            ")"
+          )
+        : "REHEARSAL",
+
+    timelineTitle:
+      buildHomeV2RehearsalTimelineDescription_(
+        rehearsalType,
+        pianist
+      )
+  };
+}
+
+
+function extractHomeV2RehearsalType_(
+  text
+) {
+  const match =
+    String(text || "")
+      .match(
+        /\bREHEARSAL\s*\(([^)]+)\)/i
+      );
+
+  return match
+    ? String(match[1] || "").trim()
+    : "";
+}
+
+
+function extractHomeV2RehearsalPianist_(
+  text
+) {
+  const clean =
+    String(text || "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  /*
+   * Everything beginning with “w/” through the
+   * Stage Management assignment.
+   *
+   * Example:
+   * w/Danny M., NJ A. + Liz D. + Carmel D.
+   */
+  let match =
+    clean.match(
+      /\bw\/(.+?)(?=\s+SMs?\s*=|\s*$)/i
+    );
+
+  if (!match) {
+    match =
+      clean.match(
+        /\bWITH\s+(.+?)(?=\s+SMs?\s*=|\s*$)/i
+      );
+  }
+
+  if (!match) {
+    return "";
+  }
+
+  return String(
+    match[1] || ""
+  )
+    .replace(/[.;,\s]+$/, "")
+    .trim();
+}
+
+
+function extractHomeV2RehearsalCalled_(
+  text
+) {
+  let clean =
+    String(text || "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  /*
+   * Remove leading schedule language.
+   */
+  clean =
+    clean.replace(
+      /^(?:ONSTAGE\s+)?REHEARSAL\s*[-–:]?\s*/i,
+      ""
+    );
+
+  /*
+   * Stop before the rehearsal description or pianist.
+   */
+  clean =
+    clean.split(
+      /\s+REHEARSAL\b|\s+w\/|\s+WITH\s+/i
+    )[0];
+
+  clean =
+    clean
+      .replace(/\bONLY\b.*$/i, "")
+      .replace(/[.;,\s]+$/, "")
+      .trim();
+
+  return clean;
+}
+
+
+function buildHomeV2RehearsalTimelineDescription_(
+  rehearsalType,
+  pianist
+) {
+  let title =
+    "Rehearsal";
+
+  if (rehearsalType) {
+    title +=
+      " (" +
+      rehearsalType +
+      ")";
+  }
+
+  if (pianist) {
+    title +=
+      " w/" +
+      pianist;
+  }
+
+  return title;
+}
+
+function toHomeV2DisplayCase_(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\b\w/g, function (letter) {
+      return letter.toUpperCase();
+    })
+    .replace(/\bPut-In\b/i, "Put-In")
+    .replace(/\bBrush-Up\b/i, "Brush-Up");
+}
+
+function shouldHomeV2UseOperationalTimelineEvent_(event) {
+  event = event || {};
+
+  const category = String(event.category || "").toUpperCase();
+  const title = String(event.title || "").trim();
+  const text = [category, title, event.originalText]
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+
+  if (
+    category === "PT" ||
+    isHomeV2PTOnlyText_(text) ||
+    text.includes("DOLLAR FRIDAY")
+  ) {
+    return false;
+  }
+
+  if (
+    category === "REHEARSAL" ||
+    isHomeV2MajorActivityText_(text)
+  ) {
+    return false;
+  }
+
+  if (/CREW\s+CALL/i.test(title) && !isHomeV2ExactCrewCall_(event)) {
+    return false;
+  }
+
+  return true;
+}
+
+function shouldHomeV2IncludeEventInBlock_(
+  block,
+  event
+) {
+  block =
+    block || {};
+
+  event =
+    event || {};
+
+  if (
+    block.type !==
+    "activity"
+  ) {
+    return true;
+  }
+
+  return (
+    isHomeV2ExactCrewCall_(
+      event
+    ) ||
+    isHomeV2TeamSMArrival_(
+      event
+    )
+  );
+}
+
+
+function isHomeV2TeamSMArrival_(
+  event
+) {
+  event =
+    event || {};
+
+  const title =
+    String(
+      event.title ||
+      event.name ||
+      ""
+    )
+      .replace(/\s+/g, " ")
+      .trim()
+      .toUpperCase();
+
+  return (
+    title ===
+      "TEAM SM ARRIVAL" ||
+    title ===
+      "SM TEAM ARRIVAL" ||
+    title ===
+      "STAGE MANAGEMENT ARRIVAL"
+  );
+}
+
+function isHomeV2ExactCrewCall_(event) {
+  event = event || {};
+
+  const title = String(event.title || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+  return title === "CREW CALL";
+}
+
+function dedupeHomeV2BlockTimelineEvents_(events) {
+  const seen = {};
+
+  return (events || []).filter(function (event) {
+    const key = [
+      String(event.timeText || "").trim().toUpperCase(),
+      normalizeHomeV2EventBlockKey_(event.title || event.originalText || ""),
+      normalizeHomeV2EventBlockKey_(
+        event.appliesTo || event.actor || event.room || ""
+      )
+    ].join("|");
+
+    if (seen[key]) return false;
+
+    seen[key] = true;
+    return true;
+  });
+}
+
+function findHomeV2EventBlockForTimelineEvent_(
+  blocks,
+  event
+) {
+  if (!blocks.length) {
+    return 0;
+  }
+
+  const eventMinutes =
+    homeV2TimeSortValue_(
+      event &&
+      event.timeText
+    );
+
+  if (
+    eventMinutes ===
+    9999999999999
+  ) {
+    return 0;
+  }
+
+  const exactIndex =
+    findHomeV2MatchingAnchorIndex_(
+      blocks,
+      event,
+      eventMinutes
+    );
+
+  if (exactIndex >= 0) {
+    return exactIndex;
+  }
+
+  /*
+   * Team SM Arrival belongs to the next rehearsal
+   * or major activity, not the evening performance.
+   */
+  if (
+    isHomeV2TeamSMArrival_(
+      event
+    )
+  ) {
+    for (
+      let index = 0;
+      index < blocks.length;
+      index++
+    ) {
+      const block =
+        blocks[index];
+
+      if (
+        block.type !==
+        "activity"
+      ) {
+        continue;
+      }
+
+      if (
+        eventMinutes <=
+        block.startMinutes
+      ) {
+        return index;
+      }
+    }
+  }
+
+  if (
+    isHomeV2ExactCrewCall_(
+      event
+    )
+  ) {
+    for (
+      let index = 0;
+      index < blocks.length;
+      index++
+    ) {
+      const block =
+        blocks[index];
+
+      if (
+        block.type !==
+        "activity"
+      ) {
+        continue;
+      }
+
+      const start =
+        block.startMinutes;
+
+      const end =
+        getHomeV2EventBlockEndMinutes_(
+          block
+        );
+
+      if (
+        eventMinutes >= start &&
+        eventMinutes <= end
+      ) {
+        return index;
+      }
+    }
+  }
+
+  for (
+    let index = 0;
+    index < blocks.length;
+    index++
+  ) {
+    const block =
+      blocks[index];
+
+    if (
+      block.type ===
+        "performance" &&
+      eventMinutes <=
+        block.startMinutes
+    ) {
+      return index;
+    }
+  }
+
+  return (
+    blocks.length - 1
+  );
+}
+
+function getHomeV2EventBlockEndMinutes_(block) {
+  block = block || {};
+
+  const endMinutes = homeV2TimeSortValue_(block.endTimeText);
+
+  if (endMinutes !== 9999999999999) return endMinutes;
+
+  return Number(block.startMinutes || 0);
+}
+
+function findHomeV2MatchingAnchorIndex_(blocks, event, eventMinutes) {
+  const eventText = [
+    event && event.category,
+    event && event.title,
+    event && event.originalText
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+
+  for (let index = 0; index < blocks.length; index++) {
+    const block = blocks[index];
+
+    if (block.startMinutes !== eventMinutes) continue;
+
+    if (
+      block.type === "performance" &&
+      (String((event && event.category) || "").toLowerCase() ===
+        "performance" ||
+        eventText.includes("PERFORMANCE"))
+    ) {
+      return index;
+    }
+
+    if (
+      block.type === "activity" &&
+      normalizeHomeV2EventBlockKey_(eventText).includes(
+        normalizeHomeV2EventBlockKey_(block.title)
+      )
+    ) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function compareHomeV2TimelineEventsForBlock_(a, b) {
+  return (
+    homeV2TimeSortValue_(a && a.timeText) -
+    homeV2TimeSortValue_(b && b.timeText)
+  );
+}
+
+function applyHomeV2EventBlockHeaders_(blocks) {
+  if (blocks.length === 1) {
+    blocks[0].header = "TODAY'S EVENTS";
+    return;
+  }
+
+  const eveningPerformanceIndex = findHomeV2EveningPerformanceBlockIndex_(
+    blocks
+  );
+
+  blocks.forEach(function (block, index) {
+    if (index === eveningPerformanceIndex) {
+      block.header = "EVENING EVENTS";
+      return;
+    }
+
+    if (block.type === "performance") {
+      block.header =
+        block.startMinutes < 17 * 60 ? "MATINEE EVENTS" : "EVENING EVENTS";
+      return;
+    }
+
+    if (eveningPerformanceIndex >= 0 && index < eveningPerformanceIndex) {
+      block.header = "MATINEE EVENTS";
+      return;
+    }
+
+    block.header = "TODAY'S EVENTS";
+  });
+}
+
+function homeV2TimeSortValue_(timeText) {
+  const text = String(timeText || "").trim();
+  if (!text) return 9999999999999;
+
+  const match = text.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return 9999999999999;
+
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const ampm = String(match[3] || "").toUpperCase();
+
+  if (ampm === "PM" && hour !== 12) hour += 12;
+  if (ampm === "AM" && hour === 12) hour = 0;
+
+  return hour * 60 + minute;
+}
+
+function findHomeV2EveningPerformanceBlockIndex_(blocks) {
+  for (let index = blocks.length - 1; index >= 0; index--) {
+    const block = blocks[index];
+
+    if (block.type === "performance" && block.startMinutes >= 17 * 60) {
+      return index;
+    }
+  }
+
+  return -1;
+}
